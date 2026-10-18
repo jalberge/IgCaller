@@ -439,7 +439,6 @@ def findJandVgenes(annot_table, bedFile, GENE, genomeVersion, annot_table_JV):
 					elif GENE == "CSR": # class switch
 						window1 = 0
 						window2 = 0
-					
 					elif GENE == "TRA": # orientation V - J (+)
 						if v[3].startswith("TRAJ"):
 							window1 = 10
@@ -447,7 +446,6 @@ def findJandVgenes(annot_table, bedFile, GENE, genomeVersion, annot_table_JV):
 						else:
 							window1 = 0
 							window2 = 10
-					
 					elif GENE == "TRB": # orientation V - J (+) [some V genes in - strand in hg19]
 						if v[3].startswith("TRBJ"):
 							window1 = 10
@@ -455,7 +453,6 @@ def findJandVgenes(annot_table, bedFile, GENE, genomeVersion, annot_table_JV):
 						else:
 							window1 = 0 if genomeVersion == "hg38" else 5
 							window2 = 10
-					
 					elif GENE == "TRG": # orientation J - V (-)
 						if v[3].startswith("TRGJ"):
 							window1 = 300 if w[11] == "insertSize" else 0
@@ -463,7 +460,6 @@ def findJandVgenes(annot_table, bedFile, GENE, genomeVersion, annot_table_JV):
 						else:
 							window1 = 10
 							window2 = 0
-
 					elif GENE == "TRD": # orientation V - J (+)
 						if v[3].startswith("TRDJ"):
 							window1 = 10
@@ -519,16 +515,17 @@ def findJandVgenes(annot_table, bedFile, GENE, genomeVersion, annot_table_JV):
 				# other potential SV not considered:
 				else: w.append("NA")
 		
-		if len(set(w[-5:-1])) > 1 and w[-1] != "NA": # not NA only and DELETION/INVERSION specification
+		# append to JV_list if not NA only and DELETION/INVERSION/NOTCOMPLETE specification
+		if len(set(w[-5:-1])) > 1 and w[-1] != "NA":
 			JV_list.append("%s\n" %"\t".join([str(x) for x in w]))
-
+	
 	insertsplit.close() # we have a table with ID (1 column), insertsize or split positions (4 columns), corresponding VDJ genes (4 columns)
 	
 	# save annot_table_JV.tsv and annot_table_JV_onlyComplete.tsv
 	annot_table_JV_onlyComplete = annot_table_JV.replace(".tsv", "_onlyComplete.tsv")
 	ANNOT_TABLE_JV = open(annot_table_JV, "w")
 	ANNOT_TABLE_JV_ONLYCOMPLETE = open(annot_table_JV_onlyComplete, "w")
-	for i in JV_list: 
+	for i in JV_list:
 		ANNOT_TABLE_JV.write(i)
 		if not i.endswith("NotComplete\n"): ANNOT_TABLE_JV_ONLYCOMPLETE.write(i)
 	ANNOT_TABLE_JV_ONLYCOMPLETE.close()
@@ -576,8 +573,9 @@ def findCombinationsJandV(annot_table_JV, GENE):
 	ll = []
 	for i in l:
 		XX = i[0].split(" - ")[0][3]+i[0].split(" - ")[1][3]
-		if "Kde" in i[0] or "RSS" in i[0] or XX in geneCombinations:
-			ll.append(i)
+		if i[1] == "Deletion" or (i[1] == "Inversion1" and GENE == "TRB") or (i[1] == "Inversion2" and GENE == "IGK"): # force alteration types according to locus
+			if "Kde" in i[0] or "RSS" in i[0] or XX in geneCombinations:
+				ll.append(i)
 	return(ll)
 
 def assignPositionsToJandV(l, annot_table_JV, seq, GENE):
