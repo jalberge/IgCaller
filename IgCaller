@@ -580,12 +580,12 @@ if outputPath is None:  wkDir = originalBamT.split("/")[-1].replace(".bam", "_Ig
 else: wkDir = outputPath+"/"+originalBamT.split("/")[-1].replace(".bam", "_IgCaller")
 if not os.path.exists(wkDir): os.mkdir(wkDir)
 if not os.path.exists(wkDir+"/tmp"): os.mkdir(wkDir+"/tmp")
-errLogMpileup = wkDir+"/tmp/errLogMpileup.txt"
+errLogSamtools = wkDir+"/tmp/errLogSamtools.txt"
 
 ## Create mini IG-bam for tumor and normal (if available):
 print(str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))+" - IgCaller: creating mini BAM files...")
 bamT = wkDir+"/"+originalBamT.split("/")[-1]
-comms = pathToSamtools+"samtools view -h -P -F 1024 -b "+originalBamT+" "+coordsToSubset+" | "+pathToSamtools+"samtools sort -@ "+threadsForSamtools+" -o "+bamT  # -F 1024 = read is PCR or optical duplicate
+comms = pathToSamtools+"samtools view -h -P -F 1024 -b "+originalBamT+" "+coordsToSubset+" | "+pathToSamtools+"samtools sort -@ "+threadsForSamtools+" -o "+bamT+" 2>> "+errLogSamtools  # -F 1024 = read is PCR or optical duplicate
 subprocess.call(comms, shell=True)
 comms = pathToSamtools+"samtools index -@ "+threadsForSamtools+" "+bamT
 subprocess.call(comms, shell=True)
@@ -593,7 +593,7 @@ bamN = None
 miniBamN = None
 if originalBamN is not None:
 	bamN = wkDir+"/"+originalBamN.split("/")[-1]
-	comms = pathToSamtools+"samtools view -h -P -F 1024 -b "+originalBamN+" "+coordsToSubset+" | "+pathToSamtools+"samtools sort -@ "+threadsForSamtools+" -o "+bamN
+	comms = pathToSamtools+"samtools view -h -P -F 1024 -b "+originalBamN+" "+coordsToSubset+" | "+pathToSamtools+"samtools sort -@ "+threadsForSamtools+" -o "+bamN+" 2>> "+errLogSamtools
 	subprocess.call(comms, shell=True)
 	comms = pathToSamtools+"samtools index -@ "+threadsForSamtools+" "+bamN 
 	subprocess.call(comms, shell=True)
@@ -607,7 +607,7 @@ SUMM.write(header+"\n")
 # Iterate over each IG/TCR locus:
 listGenes = ["IGH", "IGK", "IGL", "CSR"] if geneToAnalyze == "ig" else ["TRA", "TRB", "TRD", "TRG"] if geneToAnalyze == "tcr" else ["IGH", "IGK", "IGL", "CSR", "TRA", "TRB", "TRD", "TRG"] 	
 
-if runOnlyOncogenicRearrangements == "no":	
+if runOnlyOncogenicRearrangements == "no":
 	
 	for GENE in listGenes:
 		
@@ -634,8 +634,7 @@ if runOnlyOncogenicRearrangements == "no":
 			comms = pathToSamtools+"samtools index -@ "+threadsForSamtools+" "+miniBamN 
 			subprocess.call(comms, shell=True)
 		
-		# 3) Convert SAM file to annotated table and write to disc:
-		## Take samfile, get columns of interest and anotate reads with large insert size (as insertSize) and split/soft clipped (as split) 
+		# 3) Convert SAM file to annotated table:
 		annot_table = miniSamT.replace(".sam", "_splitinsert.tsv")
 		convertSamToAnnotatedTable(miniSamT, chromGene, GENE, minimumNumberOfNucleotidesSoft, annot_table)
 		
@@ -660,10 +659,10 @@ if runOnlyOncogenicRearrangements == "no":
 			information = addReadNames(GENE, information, annot_table_JV)
 			
 			# 10) Get J and V sequences:
-			information = getJandVsequences("first", seq, phaseReadsBasedOnMutations, information, annot_table_JV, GENE, refGenome, snps_file, baseq, chromGene, bamN, pairedMode, miniBamT, miniBamN, depth, altDepth, tumorPurity, vafCutoff, vafCutoffNormal, pathToSamtools, threadsForSamtools, errLogMpileup)
+			information = getJandVsequences("first", seq, phaseReadsBasedOnMutations, information, annot_table_JV, GENE, refGenome, snps_file, baseq, chromGene, bamN, pairedMode, miniBamT, miniBamN, depth, altDepth, tumorPurity, vafCutoff, vafCutoffNormal, pathToSamtools, threadsForSamtools, errLogSamtools)
 			
 			# 11) Get D sequences (IGH/TRB/TRD = N-D-N, IGK/IGL/TRA/TRG = N):
-			information = getDsequence(information, annot_table_JV, GENE, Dseqs, minimumNumberOfNucleotidesSoft, seq, bedFile, refGenome, miniBamT, pathToSamtools, errLogMpileup)
+			information = getDsequence(information, annot_table_JV, GENE, Dseqs, minimumNumberOfNucleotidesSoft, seq, bedFile, refGenome, miniBamT, pathToSamtools, errLogSamtools)
 			
 			# 12) Remove low support rearrangements and adjust insertSize only rearrangements:
 			information = removeLowSupportRearrangements(information, tumorPurity, scoreCutoffFilter, keepInsertSizeOnlyRearrangements, annot_table_JV, seqDepth)
@@ -671,8 +670,8 @@ if runOnlyOncogenicRearrangements == "no":
 			# 13) Re-get J and V sequences:
 			## second round: to phase reads based on mutations
 			## third round: to get final sequence based on all reads assigned to each rearrangement
-			information = getJandVsequences("second", seq, phaseReadsBasedOnMutations, information, annot_table_JV, GENE, refGenome, snps_file, baseq, chromGene, bamN, pairedMode, miniBamT, miniBamN, depth, altDepth, tumorPurity, vafCutoff, vafCutoffNormal, pathToSamtools, threadsForSamtools, errLogMpileup)
-			information = getJandVsequences("third", seq, phaseReadsBasedOnMutations, information, annot_table_JV, GENE, refGenome, snps_file, baseq, chromGene, bamN, pairedMode, miniBamT, miniBamN, depth, altDepth, tumorPurity, vafCutoff, vafCutoffNormal, pathToSamtools, threadsForSamtools, errLogMpileup)
+			information = getJandVsequences("second", seq, phaseReadsBasedOnMutations, information, annot_table_JV, GENE, refGenome, snps_file, baseq, chromGene, bamN, pairedMode, miniBamT, miniBamN, depth, altDepth, tumorPurity, vafCutoff, vafCutoffNormal, pathToSamtools, threadsForSamtools, errLogSamtools)
+			information = getJandVsequences("third", seq, phaseReadsBasedOnMutations, information, annot_table_JV, GENE, refGenome, snps_file, baseq, chromGene, bamN, pairedMode, miniBamT, miniBamN, depth, altDepth, tumorPurity, vafCutoff, vafCutoffNormal, pathToSamtools, threadsForSamtools, errLogSamtools)
 			
 			# 14) Collapse rearrangements with similar nucleotide sequences:
 			if collapseSequences == "yes": information = doCollapseSequences(information, collapseSequencesSimilarity, GENE)
@@ -711,7 +710,7 @@ if runOnlyOncogenicRearrangements == "no":
 		
 		elif GENE == "CSR":
 			# 21) Study coverage around CSR and return info:
-			class_switch, class_switch_filt, reductionMeans = classSwitchAnalysis(wkDir, data, annot_table_JV, bedFile, baseq, chromGene, bamT, bamN, pathToSamtools, tumorPurity, seq, scoreCutoffCSR, errLogMpileup)
+			class_switch, class_switch_filt, reductionMeans = classSwitchAnalysis(wkDir, data, annot_table_JV, bedFile, baseq, chromGene, bamT, bamN, pathToSamtools, tumorPurity, seq, scoreCutoffCSR, errLogSamtools)
 
 			Vseq = open(bamT.replace(".bam", "_output_"+GENE+".tsv"), "w")
 			Vseq.write("Genes\tMechanism\tScore\tMQ\tNum_reads\tAdjusted_mean_pre_break\tAdjusted_mean_post_break\tP_value\tPct_reduction_adjusted_means"+("" if reportReadNames == "no" else "\tRead_names")+"\n")
@@ -733,7 +732,7 @@ if runOnlyOncogenicRearrangements == "no":
 # 23) Genome-wide IG/TCR translocations:
 if runOncogenicRearrangements == "yes":
 	print(str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))+" - IgCaller: analyzing genome-wide "+("IG" if geneToAnalyze == "ig" else "TCR" if geneToAnalyze == "tcr" else "IG/TCR")+" rearrangements...")
-	translocationsALL, translocationsPASS = getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, threadsForSamtools, coordsToSubset, bamT, bamN, chrom, geneToAnalyze, tumorPurity, mntonco, mntoncoPass, vafOnco, mnnonco, mapqOnco, mncPoN, genesOncoIg, customGenesOncoIg, genesOncoIgDistance, customGenesOncoIgDistance, reportReadNames, errLogMpileup)
+	translocationsALL, translocationsPASS = getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, threadsForSamtools, coordsToSubset, bamT, bamN, chrom, geneToAnalyze, tumorPurity, mntonco, mntoncoPass, vafOnco, mnnonco, mapqOnco, mncPoN, genesOncoIg, customGenesOncoIg, genesOncoIgDistance, customGenesOncoIgDistance, reportReadNames, errLogSamtools)
 
 	Vseq = open(bamT.replace(".bam", "_output_oncogenic_rearrangements.tsv"), "w")
 	Vseq.write("\t".join(["Rearrangement", "Mechanism", "Score", "MQ", "Num_reads", "Read_types", "Depths_and_VAF", "Reads_in_normal", "Count_in_PoN", "Repeat_masker", "Chr_A", "Position_A", "Strand_A", "Chr_B", "Position_B", "Strand_B", "N_nucleotides", "Gene_ID", "Distance_to_gene"])+("" if reportReadNames == "no" else "\tRead_names")+"\n")
@@ -751,7 +750,7 @@ SUMM.close()
 if estimatePurity == "yes" and runOnlyOncogenicRearrangements == "no":
 	print(str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))+" - IgCaller: calculating purity...")
 	if bamN is None: print(str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))+" - IgCaller: warning message... purity estimates are more accurately calculated when using a normal BAM file (either paired or unpaired) as a reference.")
-	getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOutputFile, geneToAnalyze, listGenes, estimatePurityCoverage, bamT, bamN, seqDepth, pathToSamtools, mapq, scoreCutoff, plotPurityCoverage, reportReadNames, errLogMpileup)
+	getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOutputFile, geneToAnalyze, listGenes, estimatePurityCoverage, bamT, bamN, seqDepth, pathToSamtools, mapq, scoreCutoff, plotPurityCoverage, reportReadNames, errLogSamtools)
 
 # 25) Clean tmp folder, mini IG bam files - if specified - and close:
 subprocess.call("rm -r "+wkDir+"/tmp" , shell=True)

@@ -65,7 +65,21 @@ def flagToCustomBinary(flag):
 	binary = ("0"*(12-len(binary)))+binary
 	return(binary[::-1])
 
-def CustomSequenceMatcher(seqA, seqB, seqType):
+def alignWithoutInternalGap(seqA, seqB):
+	aligner = PairwiseAligner()
+	aligner.mode = "global"
+	aligner.match_score = 2
+	aligner.mismatch_score = -1
+	aligner.open_gap_score = -1000
+	aligner.extend_gap_score = -1000
+	aligner.left_open_gap_score = 0
+	aligner.left_extend_gap_score = 0
+	aligner.right_open_gap_score = 0
+	aligner.right_extend_gap_score = 0
+	align = aligner.align(seqA, seqB)
+	return(align)
+
+def customSequenceMatcher(seqA, seqB, seqType):
 	matches = 0
 	total = 0
 	if len(seqA) == len(seqB) and seqA != "NA" and seqB != "NA":
@@ -913,7 +927,7 @@ def addReadNames(GENE, information, annot_table_JV):
 	information.sort(key=lambda p: round(p[2]*2 + p[3], 1), reverse=True)
 	return(information)
 
-def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot_table_JV, GENE, refGenome, snps_file, baseq, chromGene, bamN, pairedMode, miniBamT, miniBamN, depth, altDepth, tumorPurity, vafCutoff, vafCutoffNormal, pathToSamtools, threadsForSamtools, errLogMpileup):
+def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot_table_JV, GENE, refGenome, snps_file, baseq, chromGene, bamN, pairedMode, miniBamT, miniBamN, depth, altDepth, tumorPurity, vafCutoff, vafCutoffNormal, pathToSamtools, threadsForSamtools, errLogSamtools):
 
 	annot_table_JV_to_use = annot_table_JV.replace(".tsv", "_onlyComplete.tsv")
 
@@ -953,7 +967,7 @@ def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot
 					fr = " -f "+refGenome+" -r "
 					
 				# mpileup tumor all reads
-				subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamT+ " > "+miniBamT.replace(".bam", "_output_mpileup.tsv")+" 2>> "+errLogMpileup, shell=True) # allow -A (anomalous read pairs) in tumor sample only
+				subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamT+ " > "+miniBamT.replace(".bam", "_output_mpileup.tsv")+" 2>> "+errLogSamtools, shell=True) # allow -A (anomalous read pairs) in tumor sample only
 				
 				if round == "first":
 					# mpileup tumor only reads spanning V-J
@@ -974,7 +988,7 @@ def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot
 						readNamesFile.close()
 						subprocess.call(pathToSamtools+"samtools view -@ "+threadsForSamtools+" -h -b -N "+readNamesFileTxt+" -o "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningJV.bam")+" "+miniBamT, shell=True)
 						subprocess.call(pathToSamtools+"samtools index "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningJV.bam"), shell=True) 
-						subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningJV.bam")+ " > "+miniBamT.replace(".bam", "_output_mpileup_readsSpanningJV.tsv")+" 2>> "+errLogMpileup, shell=True)
+						subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningJV.bam")+ " > "+miniBamT.replace(".bam", "_output_mpileup_readsSpanningJV.tsv")+" 2>> "+errLogSamtools, shell=True)
 						if os.stat(miniBamT.replace(".bam", "_output_mpileup_readsSpanningJV.tsv")).st_size == 0:
 							O = open(miniBamT.replace(".bam", "_output_mpileup_readsSpanningJV.tsv"), "w")
 							for missingPos in range(i[z], i[z+1]+1):
@@ -1004,7 +1018,7 @@ def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot
 						readNamesFile.close()
 						subprocess.call(pathToSamtools+"samtools view -@ "+threadsForSamtools+" -h -b -N "+readNamesFileTxt+" -o "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningBreak.bam")+" "+miniBamT, shell=True)
 						subprocess.call(pathToSamtools+"samtools index "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningBreak.bam"), shell=True) 
-						subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningBreak.bam")+ " > "+miniBamT.replace(".bam", "_output_mpileup_readsSpanningBreak.tsv")+" 2>> "+errLogMpileup, shell=True)
+						subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningBreak.bam")+ " > "+miniBamT.replace(".bam", "_output_mpileup_readsSpanningBreak.tsv")+" 2>> "+errLogSamtools, shell=True)
 						if os.stat(miniBamT.replace(".bam", "_output_mpileup_readsSpanningBreak.tsv")).st_size == 0:
 							O = open(miniBamT.replace(".bam", "_output_mpileup_readsSpanningBreak.tsv"), "w")
 							for missingPos in range(i[z], i[z+1]+1):
@@ -1029,7 +1043,7 @@ def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot
 					readNamesFile.close()
 					subprocess.call(pathToSamtools+"samtools view -@ "+threadsForSamtools+" -h -b -N "+readNamesFileTxt+" -o "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningRearrangement.bam")+" "+miniBamT, shell=True)					
 					subprocess.call(pathToSamtools+"samtools index "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningRearrangement.bam"), shell=True) 
-					subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningRearrangement.bam")+ " > "+miniBamT.replace(".bam", "_output_mpileup_readsSpanningRearrangement.tsv")+" 2>> "+errLogMpileup, shell=True)
+					subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamT.replace("miniBam.bam", "miniBam_readsSpanningRearrangement.bam")+ " > "+miniBamT.replace(".bam", "_output_mpileup_readsSpanningRearrangement.tsv")+" 2>> "+errLogSamtools, shell=True)
 					
 					if os.stat(miniBamT.replace(".bam", "_output_mpileup_readsSpanningRearrangement.tsv")).st_size == 0:
 						O = open(miniBamT.replace(".bam", "_output_mpileup_readsSpanningRearrangement.tsv"), "w")
@@ -1066,7 +1080,7 @@ def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot
 					
 					# Normal seq:
 					if bamN is not None and pairedMode == "paired":
-						subprocess.call(pathToSamtools+"samtools mpileup -d 0 -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamN+ " > "+miniBamN.replace(".bam", "_output_mpileup.tsv")+" 2>> "+errLogMpileup, shell=True)
+						subprocess.call(pathToSamtools+"samtools mpileup -d 0 -B -Q "+baseq+fr+chromGene+":"+str(i[z])+"-"+str(i[z+1])+" "+miniBamN+ " > "+miniBamN.replace(".bam", "_output_mpileup.tsv")+" 2>> "+errLogSamtools, shell=True)
 						
 						normal = open(miniBamN.replace(".bam", "_output_mpileup.tsv"), "r")
 						wild = {} # normal patient sequence
@@ -1214,7 +1228,7 @@ def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot
 									mutPhasedDone = mutPhased
 									readNamePhaseMutTemp = []
 									readNamePhaseMut = []
-									subprocess.call(pathToSamtools+"samtools mpileup -d 0 -B --output-QNAME -Q "+baseq+fr+mutPhased.split("_")[0]+" "+miniBamT+ " > "+miniBamT.replace(".bam", "_output_mpileup_MutPhased.tsv")+" 2>> "+errLogMpileup, shell=True) # get reads spaining last mutation
+									subprocess.call(pathToSamtools+"samtools mpileup -d 0 -B --output-QNAME -Q "+baseq+fr+mutPhased.split("_")[0]+" "+miniBamT+ " > "+miniBamT.replace(".bam", "_output_mpileup_MutPhased.tsv")+" 2>> "+errLogSamtools, shell=True) # get reads spaining last mutation
 									MUTPHASE = open(miniBamT.replace(".bam", "_output_mpileup_MutPhased.tsv"), "r")
 									for mutPhaseLine in MUTPHASE:
 										vp = mutPhaseLine.rstrip("\n").split("\t")
@@ -1287,7 +1301,7 @@ def getJandVsequences(round, seq, phaseReadsBasedOnMutations, information, annot
 									subprocess.call(pathToSamtools+"samtools index "+miniBamT.replace("miniBam.bam", "miniSam_readNameMutPhased.bam"), shell=True) 
 								
 								# mpileup for the ongoing position only using bam with reads phased with last mutation
-								subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+j.rstrip("\n").split("\t")[1]+"-"+j.rstrip("\n").split("\t")[1]+" "+miniBamT.replace("miniBam.bam", "miniSam_readNameMutPhased.bam")+ " > "+miniBamT.replace(".bam", "_output_mpileup_readNameMutPhased.tsv")+" 2>> "+errLogMpileup, shell=True)
+								subprocess.call(pathToSamtools+"samtools mpileup -d 0 -a -A -B -Q "+baseq+fr+chromGene+":"+j.rstrip("\n").split("\t")[1]+"-"+j.rstrip("\n").split("\t")[1]+" "+miniBamT.replace("miniBam.bam", "miniSam_readNameMutPhased.bam")+ " > "+miniBamT.replace(".bam", "_output_mpileup_readNameMutPhased.tsv")+" 2>> "+errLogSamtools, shell=True)
 								currentJV_MUTPHASE = open(miniBamT.replace(".bam", "_output_mpileup_readNameMutPhased.tsv"), "r")
 								for mutPhaseLine in currentJV_MUTPHASE:
 									depthMutPhase = int(mutPhaseLine.rstrip("\n").split("\t")[3]) # keep at depthMutPhase
@@ -1576,7 +1590,7 @@ def createConsensusD(DseqTemp, GENE, i, Dseqs):
 	# add N-D-N / N
 	return(geneNames, DseqConsensus)		
 
-def fillInGapBetweenDandV(dSeq, potentialReadNames, i, bedFile, minimumNumberOfNucleotidesSoft, refGenome, miniBamT, pathToSamtools, errLogMpileup):
+def fillInGapBetweenDandV(dSeq, potentialReadNames, i, bedFile, minimumNumberOfNucleotidesSoft, refGenome, miniBamT, pathToSamtools, errLogSamtools):
     
 	# define minimum length to consider for alignment
 	minimumNumberOfNucleotidesSoftAmplicon = minimumNumberOfNucleotidesSoft + 2
@@ -1610,7 +1624,7 @@ def fillInGapBetweenDandV(dSeq, potentialReadNames, i, bedFile, minimumNumberOfN
 	subprocess.call(pathToSamtools+"samtools index "+miniBamTreadsFillIn, shell=True)
 	
 	# mpileup to get reference sequence
-	comm = pathToSamtools+"samtools mpileup -d 0 -a -A -f "+refGenome+" -r "+str(chrom)+":"+str(startV)+"-"+str(vEnd)+" "+miniBamTreadsFillIn+" > "+miniBamTreadsFillIn.replace(".bam", "_mpileup.tsv")+" 2>> "+errLogMpileup
+	comm = pathToSamtools+"samtools mpileup -d 0 -a -A -f "+refGenome+" -r "+str(chrom)+":"+str(startV)+"-"+str(vEnd)+" "+miniBamTreadsFillIn+" > "+miniBamTreadsFillIn.replace(".bam", "_mpileup.tsv")+" 2>> "+errLogSamtools
 	subprocess.call(comm, shell=True)
 	
 	# get potential gap sequence
@@ -1630,18 +1644,8 @@ def fillInGapBetweenDandV(dSeq, potentialReadNames, i, bedFile, minimumNumberOfN
 	gapFound = "NotFound"
 	nGapFound = "NotFound"
 	if potentialGap != "":
-		aligner = PairwiseAligner()
 		# force stitching without internal gap (potentialGap [a]: ---xx[nnn], dSeq [b]: nnnxx----)
-		aligner.mode = "global"
-		aligner.match_score = 2
-		aligner.mismatch_score = -1
-		aligner.open_gap_score = -1000
-		aligner.extend_gap_score = -1000
-		aligner.left_open_gap_score = 0
-		aligner.right_open_gap_score = 0
-		aligner.left_extend_gap_score = 0
-		aligner.right_extend_gap_score = 0
-		dAlignment = aligner.align(potentialGap, dSeq)
+		dAlignment = alignWithoutInternalGap(potentialGap, dSeq)
 		numAlignments = 0
 		try: numAlignments = len(dAlignment)
 		except OverflowError: numAlignments = 1000 
@@ -1681,7 +1685,7 @@ def fillInGapBetweenDandV(dSeq, potentialReadNames, i, bedFile, minimumNumberOfN
 	
 	return(vStartNucleotidesGermline, vStartNucleotidesTumor, gapFound, nGapFound)
 	
-def getDsequence(information, annot_table_JV, GENE, Dseqs, minimumNumberOfNucleotidesSoft, seq, bedFile, refGenome, miniBamT, pathToSamtools, errLogMpileup):
+def getDsequence(information, annot_table_JV, GENE, Dseqs, minimumNumberOfNucleotidesSoft, seq, bedFile, refGenome, miniBamT, pathToSamtools, errLogSamtools):
 
 	annot_table_JV_to_use = annot_table_JV.replace(".tsv", "_onlyBreaksInInfo.tsv")
 	readsAlreadyRecovered = [] # list to append readNames when already recovered
@@ -1773,18 +1777,8 @@ def getDsequence(information, annot_table_JV, GENE, Dseqs, minimumNumberOfNucleo
 								
 								# align soft clipped to get entire sequence
 								if jUnmap != "" and vUnmap != "":
-									aligner = PairwiseAligner()
 									# force stitching without internal gap
-									aligner.mode = "global"
-									aligner.match_score = 2
-									aligner.mismatch_score = -1
-									aligner.open_gap_score = -1000
-									aligner.extend_gap_score = -1000
-									aligner.left_open_gap_score = 0
-									aligner.right_open_gap_score = 0
-									aligner.left_extend_gap_score = 0
-									aligner.right_extend_gap_score = 0
-									unmapAlignment = aligner.align(jUnmap, vUnmap)
+									unmapAlignment = alignWithoutInternalGap(jUnmap, vUnmap)
 									numAlignments = 0
 									try: numAlignments = len(unmapAlignment)
 									except OverflowError: numAlignments = 1000 
@@ -2063,7 +2057,7 @@ def getDsequence(information, annot_table_JV, GENE, Dseqs, minimumNumberOfNucleo
 							if tuppList[1] == DseqNotMatchedMostCommon[0]:
 								readNamesDseqNotMatchedMostCommon.append(tuppList[0])
 						# try to get missing nucleotides
-						vStartNucleotidesGermline, vStartNucleotidesTumor, gapFound, nGapFound = fillInGapBetweenDandV(DseqNotMatchedMostCommon[0], readNamesDseqNotMatchedMostCommon, i, bedFile, minimumNumberOfNucleotidesSoft, refGenome, miniBamT, pathToSamtools, errLogMpileup)
+						vStartNucleotidesGermline, vStartNucleotidesTumor, gapFound, nGapFound = fillInGapBetweenDandV(DseqNotMatchedMostCommon[0], readNamesDseqNotMatchedMostCommon, i, bedFile, minimumNumberOfNucleotidesSoft, refGenome, miniBamT, pathToSamtools, errLogSamtools)
 						if gapFound != "NotFound":
 							# assign nonMatched (ie D) in 11; count of reads in 6; and readNames in -2 (split J count)
 							i[11] = DseqNotMatchedMostCommon[0][:-len(vStartNucleotidesTumor)]
@@ -2289,7 +2283,7 @@ def doCollapseSequences(information, collapseSequencesSimilarity, GENE):
 					continue
 				# check if same length, similar sequence
 				elif len(seq) == len(seqInDict):
-					if CustomSequenceMatcher(seq, seqInDict, "nt") > collapseSequencesSimilarity:
+					if customSequenceMatcher(seq, seqInDict, "nt") > collapseSequencesSimilarity:
 						foundInDict = "yes"
 						seqInDictToMatch = seqInDict
 						break
@@ -2395,7 +2389,7 @@ def doCollapseSequences(information, collapseSequencesSimilarity, GENE):
 				seqDict[seqInDictToMatch][16] = p[16]
 				seqDict[seq] = seqDict.pop(seqInDictToMatch)
 	
-	# return updatedInformation	
+	# return updatedInformation
 	updatedInformation.extend(list(seqDict.values()))
 	updatedInformation.sort(key=lambda p: round(p[2]*2 + p[3] + p[6]*2 + p[9]*2, 1), reverse=True)
 	return(updatedInformation)
@@ -2740,19 +2734,8 @@ def removePrimerFromSeq(seqToIgblast, GENE, primerFasta):
 				pSeq = ''.join(complement[base] for base in reversed(pSeq))
 				seqToMap = seqToIgblast_woN[-len(pSeq):]
 
-			# align
-			aligner = PairwiseAligner()
-			# force stitching without internal gap
-			aligner.mode = "global"
-			aligner.match_score = 2
-			aligner.mismatch_score = -1
-			aligner.open_gap_score = -1000
-			aligner.extend_gap_score = -1000
-			aligner.left_open_gap_score = 0
-			aligner.left_extend_gap_score = 0
-			aligner.right_open_gap_score = 0
-			aligner.right_extend_gap_score = 0
-			alignments = aligner.align(seqToMap, pSeq)
+			# align: force stitching without internal gap
+			alignments = alignWithoutInternalGap(seqToMap, pSeq)
 			numAlignments = 0
 			try: numAlignments = len(alignments)
 			except OverflowError: numAlignments = 1000 
@@ -3388,10 +3371,10 @@ def predefinedFilter(information, seq, seqDepth, reportOnlyProductive, scoreCuto
 								condiD = ((nw[0] == ts[0] and nw[-1] == ts[-1]) or (nw2[0] == ts2[0] and nw2[-1] == ts2[-1])) and ((line[2] == 0 and line[6] == 0 and line[9] == 0) or (trip[keys][1] == 0 and trip[keys][5] == 0 and trip[keys][8] == 0))
 								condiE = (len(common) == 2 or len(common2) >= 2) and (line[20] == "NA" or dict_cdr3 == "NA")
 								condiF = ((nw[0] == ts[0] and nw[-1].split("-")[0] == ts[-1].split("-")[0]) or (nw2[0] == ts2[0] and nw2[-1].split("-")[0] == ts2[-1].split("-")[0])) and ((line[2] == 0 and line[6] == 0 and line[9] == 0) or (trip[keys][1] == 0 and trip[keys][5] == 0 and trip[keys][8] == 0))
-								condiG = (len(common) == 2 or len(common2) >= 2) and (line[13] in trip[keys][12] or trip[keys][12] in line[13] or CustomSequenceMatcher(line[13], trip[keys][12], "nt") > collapseSequencesSimilarity)
+								condiG = (len(common) == 2 or len(common2) >= 2) and (line[13] in trip[keys][12] or trip[keys][12] in line[13] or customSequenceMatcher(line[13], trip[keys][12], "nt") > collapseSequencesSimilarity)
 								condiH = ((nw[0] == ts[0] and nw[-1] == ts[-1]) or (nw2[0] == ts2[0] and nw2[-1] == ts2[-1])) and (dict_spl_ins*3 < spl_ins or spl_ins*3 < dict_spl_ins)
 								condiI = (len(common) == 2 or len(common2) >= 2) and ( (dict_spl_ins_phased*2 < spl_ins_phased and dict_original_spl_ins*2 < original_spl_ins) or (spl_ins_phased*2 < dict_spl_ins_phased and original_spl_ins*2 < dict_original_spl_ins))
-								condiJ = nw[0].startswith("IGHJ") and (nw[0] == ts[0] or nw2[0] == ts2[0] or line[5] == trip[keys][4] or line[7] == trip[keys][6]) and (nw[-1].split("-")[0] == ts[-1].split("-")[0] or nw2[-1].split("-")[0] == ts2[-1].split("-")[0]) and (line[20] in dict_cdr3 or dict_cdr3 in line[20] or CustomSequenceMatcher(line[20], dict_cdr3, "aa") > 0.6)
+								condiJ = nw[0].startswith("IGHJ") and (nw[0] == ts[0] or nw2[0] == ts2[0] or line[5] == trip[keys][4] or line[7] == trip[keys][6]) and (nw[-1].split("-")[0] == ts[-1].split("-")[0] or nw2[-1].split("-")[0] == ts2[-1].split("-")[0]) and (line[20] in dict_cdr3 or dict_cdr3 in line[20] or customSequenceMatcher(line[20], dict_cdr3, "aa") > 0.6)
 								if condiA or condiB or condiC or condiD or condiE or condiF or condiG or condiH or condiI or condiJ:
 									if dict_spl_ins*3 < spl_ins: # check if one has more split/insert reads
 										del trip[keys]
@@ -3572,7 +3555,7 @@ def predefinedFilter(information, seq, seqDepth, reportOnlyProductive, scoreCuto
 				prodTrip[ky] = line
 		return(prodTrip)
 
-def classSwitchAnalysis(wkDir, data, annot_table_JV, bedFile, baseq, chromGene, bamT, bamN, pathToSamtools, tumorPurity, seq, scoreCutoffCSR, errLogMpileup):
+def classSwitchAnalysis(wkDir, data, annot_table_JV, bedFile, baseq, chromGene, bamT, bamN, pathToSamtools, tumorPurity, seq, scoreCutoffCSR, errLogSamtools):
 
 	annot_table_JV_to_use = annot_table_JV.replace(".tsv", "_onlyComplete.tsv")
 
@@ -3631,7 +3614,7 @@ def classSwitchAnalysis(wkDir, data, annot_table_JV, bedFile, baseq, chromGene, 
 					en = endB
 				
 				mpileupFile = wkDir+"/tmp/"+bamT.split("/")[-1].replace(".bam", "_output_mpileup.tsv")
-				subprocess.call(pathToSamtools+"samtools mpileup -d 0 -B -Q "+baseq+" -r "+chromGene+":"+str(st)+"-"+str(en)+" "+bamT+ " > "+mpileupFile+" 2>> "+errLogMpileup, shell=True)					
+				subprocess.call(pathToSamtools+"samtools mpileup -d 0 -B -Q "+baseq+" -r "+chromGene+":"+str(st)+"-"+str(en)+" "+bamT+ " > "+mpileupFile+" 2>> "+errLogSamtools, shell=True)					
 				
 				pos = st
 				lst = []
@@ -3670,7 +3653,7 @@ def classSwitchAnalysis(wkDir, data, annot_table_JV, bedFile, baseq, chromGene, 
 						en = endB
 					
 					mpileupFile = wkDir+"/tmp/"+bamN.split("/")[-1].replace(".bam", "_output_mpileup.tsv")
-					subprocess.call(pathToSamtools+"samtools mpileup -d 0 -B -Q "+baseq+" -r "+chromGene+":"+str(st)+"-"+str(en)+" "+bamN+ " > "+mpileupFile+" 2>> "+errLogMpileup, shell=True)					
+					subprocess.call(pathToSamtools+"samtools mpileup -d 0 -B -Q "+baseq+" -r "+chromGene+":"+str(st)+"-"+str(en)+" "+bamN+ " > "+mpileupFile+" 2>> "+errLogSamtools, shell=True)					
 					
 					pos = st
 					idx = 0
@@ -3725,7 +3708,7 @@ def classSwitchAnalysis(wkDir, data, annot_table_JV, bedFile, baseq, chromGene, 
 	
 	return(class_switch, class_switch_filt, reductionMeans)
 
-def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, threadsForSamtools, coordsToSubset, bamT, bamN, chrom, geneToAnalyze, tumorPurity, mntonco, mntoncoPass, vafOnco, mnnonco, mapqOnco, mncPoN, genesOncoIg, customGenesOncoIg, genesOncoIgDistance, customGenesOncoIgDistance, reportReadNames, errLogMpileup):
+def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, threadsForSamtools, coordsToSubset, bamT, bamN, chrom, geneToAnalyze, tumorPurity, mntonco, mntoncoPass, vafOnco, mnnonco, mapqOnco, mncPoN, genesOncoIg, customGenesOncoIg, genesOncoIgDistance, customGenesOncoIgDistance, reportReadNames, errLogSamtools):
 	
 	if genomeVersion == "hg19":
 		chrom14_IGH = [106030000, 107290000] # IGH region 
@@ -4298,7 +4281,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 			else: region = chrB+":"+str(int(positionB))+"-"+str(int(positionB)+19)
 
 		# depth
-		comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapqOnco+" -r "+region+" "+bamT+" 2>> "+errLogMpileup+" | cut -f 4"
+		comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapqOnco+" -r "+region+" "+bamT+" 2>> "+errLogSamtools+" | cut -f 4"
 		process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 		stdout, stderr = process.communicate()
 		depth = int(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/20, 0))
@@ -4314,7 +4297,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 		subprocess.call(comms, shell=True)
 		comms = pathToSamtools+"samtools index "+readBam
 		subprocess.call(comms, shell=True)
-		comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapqOnco+" -r "+region+" "+readBam+" 2>> "+errLogMpileup+" | cut -f 4"
+		comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapqOnco+" -r "+region+" "+readBam+" 2>> "+errLogSamtools+" | cut -f 4"
 		process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 		stdout, stderr = process.communicate()
 		altDepth = int(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/20, 0))
@@ -4433,7 +4416,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 	# 7. Return
 	return(mergedTranslocationsALL, translocationsPASS)
 
-def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOutputFile, geneToAnalyze, listGenes, estimatePurityCoverage, bamT, bamN, seqDepth, pathToSamtools, mapq, scoreCutoff, plotPurityCoverage, reportReadNames, errLogMpileup):
+def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOutputFile, geneToAnalyze, listGenes, estimatePurityCoverage, bamT, bamN, seqDepth, pathToSamtools, mapq, scoreCutoff, plotPurityCoverage, reportReadNames, errLogSamtools):
 	
 	# Define variables
 	if genomeVersion == "hg19":	
@@ -4580,19 +4563,19 @@ def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOu
 
 				else:
 					# Get mean depths tumor bam
-					comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionNormal+" "+bamT+" 2>> "+errLogMpileup+" | cut -f 4"
+					comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionNormal+" "+bamT+" 2>> "+errLogSamtools+" | cut -f 4"
 					process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 					stdout, stderr = process.communicate()
 					depthNormal = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowNormal, 0))
 					if ( seqDepth == "high" and depthNormal <= 50 ) or ( seqDepth == "int" and depthNormal <= 15 ) or ( seqDepth == "low" and depthNormal <= 7 ): flagCov = "LowCoverage"
 					else: flagCov = "PASS"
 
-					comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeletedBreak+" "+bamT+" 2>> "+errLogMpileup+" | cut -f 4"
+					comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeletedBreak+" "+bamT+" 2>> "+errLogSamtools+" | cut -f 4"
 					process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 					stdout, stderr = process.communicate()
 					depthDeletedBreak = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowDeletedBreak, 0))
 					
-					comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeletedGene+" "+bamT+" 2>> "+errLogMpileup+" | cut -f 4"
+					comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeletedGene+" "+bamT+" 2>> "+errLogSamtools+" | cut -f 4"
 					process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 					stdout, stderr = process.communicate()
 					depthDeletedGene = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowDeletedGene, 0))
@@ -4601,17 +4584,17 @@ def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOu
 					factorDeletedBreak = 1
 					factorDeletedGene = 1
 					if bamN is not None:
-						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionNormal+" "+bamN+" 2>> "+errLogMpileup+" | cut -f 4"
+						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionNormal+" "+bamN+" 2>> "+errLogSamtools+" | cut -f 4"
 						process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 						stdout, stderr = process.communicate()
 						depthNormalNormal = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowNormal, 0))
 						
-						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeletedBreak+" "+bamN+" 2>> "+errLogMpileup+" | cut -f 4"
+						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeletedBreak+" "+bamN+" 2>> "+errLogSamtools+" | cut -f 4"
 						process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 						stdout, stderr = process.communicate()
 						depthDeletedBreakNormal = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowDeletedBreak, 0))
 						
-						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeletedGene+" "+bamN+" 2>> "+errLogMpileup+" | cut -f 4"
+						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeletedGene+" "+bamN+" 2>> "+errLogSamtools+" | cut -f 4"
 						process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 						stdout, stderr = process.communicate()
 						depthDeletedGeneNormal = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowDeletedGene, 0))
@@ -4772,7 +4755,7 @@ def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOu
 					listRegionsPlot.append([chrom+"2", IGKRSSPos - 15 - windowDeletedBreak, IGKRSSPos + 15 + windowDeletedBreak, "IGKRSS", "IGKRSS"])
 
 				# Get mean depths tumor windowDeletedBreak
-				comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionNormal+" "+bamT+" 2>> "+errLogMpileup+" | cut -f 4"
+				comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionNormal+" "+bamT+" 2>> "+errLogSamtools+" | cut -f 4"
 				process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 				stdout, stderr = process.communicate()
 				depthNormal = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowDeletedBreak, 0))
@@ -4783,7 +4766,7 @@ def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOu
 				
 				else:
 					flagCov = "PASS"
-					comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeleted+" "+bamT+" 2>> "+errLogMpileup+" | cut -f 4"
+					comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeleted+" "+bamT+" 2>> "+errLogSamtools+" | cut -f 4"
 					process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 					stdout, stderr = process.communicate()
 					depthDeleted = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowDeletedBreak, 0))
@@ -4791,12 +4774,12 @@ def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOu
 					# Get mean depths normal bam
 					factorDeleted = 1
 					if bamN is not None:
-						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionNormal+" "+bamN+" 2>> "+errLogMpileup+" | cut -f 4"
+						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionNormal+" "+bamN+" 2>> "+errLogSamtools+" | cut -f 4"
 						process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 						stdout, stderr = process.communicate()
 						depthNormalNormal = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowDeletedBreak, 0))
 
-						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeleted+" "+bamN+" 2>> "+errLogMpileup+" | cut -f 4"
+						comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -r "+regionDeleted+" "+bamN+" 2>> "+errLogSamtools+" | cut -f 4"
 						process = subprocess.Popen(comms, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 						stdout, stderr = process.communicate()
 						depthDeletedNormal = float(round(float(sum([int(cov) for cov in stdout.decode("utf-8").split("\n") if cov != ""]))/windowDeletedBreak, 0))
@@ -4888,7 +4871,7 @@ def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOu
 
 		# get coverage tumor
 		covCountsTumor = wkDir+"/tmp/covCountsTumor.tsv"
-		comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -l "+bedForMpileup+" "+bamT+" > "+covCountsTumor+" 2>> "+errLogMpileup
+		comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -l "+bedForMpileup+" "+bamT+" > "+covCountsTumor+" 2>> "+errLogSamtools
 		subprocess.call(comms, shell=True)
 		COV = open(covCountsTumor, "r")
 		chroms = []
@@ -4907,7 +4890,7 @@ def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOu
 		# get coverage normal
 		if bamN is not None:
 			covCountsNormal = wkDir+"/tmp/covCountsNormal.tsv"
-			comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -l "+bedForMpileup+" "+bamN+" > "+covCountsNormal+" 2>> "+errLogMpileup
+			comms = pathToSamtools+"samtools mpileup -d 0 -a -A -B -q "+mapq+" -l "+bedForMpileup+" "+bamN+" > "+covCountsNormal+" 2>> "+errLogSamtools
 			subprocess.call(comms, shell=True)
 			COV = open(covCountsNormal, "r")
 			chroms = []
