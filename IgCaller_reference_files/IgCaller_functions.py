@@ -3522,7 +3522,9 @@ def predefinedFilter(information, seq, seqDepth, reportOnlyProductive, scoreCuto
 			geneComb = "DV"
 		elif "IGKKde" in firstGene:
 			geneCombKde = "Kde"
-			if "V" in lastGene: geneComb = "JV" # consider also as JV for downstream use
+			if "V" in lastGene: geneComb = "JV" # considered also as JV for downstream use
+		elif "IGKRSS" in firstGene and "V" in lastGene:
+			geneComb = "JV" # considered as JV for downstream use
 													
 		#### FlagScore = PASS or LowConfidence
 		flagScore = "PASS" if trip[item][21] >= scoreCutoff else "LowConfidence"
