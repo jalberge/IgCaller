@@ -4402,7 +4402,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 		score = float(trList[2])
 		vafAdj = float(trList[6].split("[")[1].replace("%])", ""))
 		scoreNormal = "NA" if trList[7] == "NA" else int(trList[7])
-		ponCount = int(trList[7])
+		ponCount = int(trList[8])
 		if score >= mntoncoPass and vafAdj >= vafOnco*100 and ( scoreNormal == "NA" or scoreNormal <= mnnonco ) and ponCount <= mncPoN:
 			mechanism = trList[1]
 			traAnnot = trList[0]
