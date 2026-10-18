@@ -3984,7 +3984,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 			readNameList = list()
 	
 	# filter based on mntonco cutoff and prepare coordsToSubsetNormal bam file
-	coordsToSubsetNormal = ""
+	coordsToSubsetNormal = []
 	translocationsFiltered = {}
 	translocationsFiltered[chrom+"2"] = {}
 	translocationsFiltered[chrom+"7"] = {}
@@ -3996,13 +3996,18 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 				if item[6] >= mntonco:
 					if key2 in translocationsFiltered[key1]: translocationsFiltered[key1][key2].append(item)
 					else: translocationsFiltered[key1][key2] = [ item ]
-					coordsToSubsetNormal = coordsToSubsetNormal+" "+item[0]+":"+str(min(map(int, item[1].split("-")))-200)+"-"+str(max(map(int, item[1].split("-")))+200)
+					coordsToSubsetNormal.append(item[0]+":"+str(min(map(int, item[1].split("-")))-200)+"-"+str(max(map(int, item[1].split("-")))+200))
 	
 	# 3. Annotate in normal
 	if any(translocationsFiltered.values()) and bamN is not None:
 
 		samN = wkDir+"/tmp/"+bamN.split("/")[-1].replace(".bam", ".sam")
-		comms = pathToSamtools+"samtools view -@ "+threadsForSamtools+" -q "+mapqOnco+" "+bamN+" "+coordsToSubsetNormal+" > "+samN
+		coordsToSubsetNormalFile = samN.replace(".sam", "_coordsToSubset.bed")
+		CTSN = open(coordsToSubsetNormalFile, "w")
+		for coords in coordsToSubsetNormal:
+			CTSN.write("%s\t%s\t%s\n" %(coords.split(":")[0], coords.split(":")[1].split("-")[0], coords.split(":")[1].split("-")[1]))
+		CTSN.close()
+		comms = pathToSamtools+"samtools view -@ "+threadsForSamtools+" -q "+mapqOnco+" -L "+coordsToSubsetNormalFile+" "+bamN+" > "+samN
 		subprocess.call(comms, shell=True)
 
 		readNamesUsedInNormal = [] # to avoid counting R1 and R2 twice
