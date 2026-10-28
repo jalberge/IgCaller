@@ -73,6 +73,7 @@ docker run --platform linux/amd64 --rm \
   -o /output
 ```
 
+
 Adjust the parameters for sequencing technique, sequencing coverage, gene to be analyzed, etc. as explained below:
 
 #### Mandatory arguments:
