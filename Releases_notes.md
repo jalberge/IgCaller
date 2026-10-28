@@ -2,7 +2,7 @@
 
 * v2.0.0:
   * Added functionality to reconstruct the T-cell receptor (TCR). See [issue #10](https://github.com/ferrannadeu/IgCaller/issues/10) and argument -g for details.
-  * Added the possibility to annotate the reconstructed IG/TCR sequences using either the built-in annotation scheme of IgCaller or IgBLAST (v1.22.0) using IMGT (release 202631-1; 27 July 2026) or OGRDB (release 2026-05-27) databases (see -a and -aa). We recommend using IgBLAST coupled with IMGT (default settings), especially when paired normal (i.e., germline) BAM file is not available.
+  * Added the possibility to annotate the reconstructed IG/TCR sequences using either the built-in annotation scheme of IgCaller or IgBLAST (v1.22.0) using IMGT or OGRDB databases (see -a and -aa). We recommend using IgBLAST coupled with IMGT (default settings).
   * Added the reconstruction of partial (J-D or D-V only) rearrangements.
   * Added compatibility with data generated using amplicon-based NGS approaches (i.e., primer-based PCR amplification of IG/TCR rearrangements). See arguments -seq, -pr, -prf, and -prs for further details.
   * Added a module to calculate tumor purity based on the IG/TCR gene rearrangements (see arguments -ep, -epc, -ppc, and -pm, as well as the new output files *output_purity*).
@@ -11,6 +11,7 @@
   * Significant improvements on sensitivity and specificity for both IG/TCR gene rearrangements and oncogenic alterations (see -hs, -sf, and -mnns).
   * Improved phasing of reads along the V gene (see -prbm).
   * Added some optional arguments for flexibility (see -slc, -pfm, -rop, -kisor, -cs, -css, -ror, and -roor).
+  * Improved detection of real oncogenic alterations through automated filtering of high-noise sequencing regions.
   * Improved annotation of oncogenic alterations, including the identification of N-nucleotides and other improvements (see -vafOnco, -gOnco, -cgOnco, -gOncoDist, and -cgOncoDist for further details).
   * Extended panel of normals for the analysis of oncogenic rearrangements.
   * Added the possibility to report the read names of the reads associated with each specific rearrangement identified (see --rrn).

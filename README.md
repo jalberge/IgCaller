@@ -74,7 +74,7 @@ Adjust the parameters for sequencing technique, sequencing coverage, gene to be 
 
 ###### Annotation tool and database:
 * annotateSeq (-a): Annotate sequence using IgCaller built-in annotation workflow or using IgBLAST (v1.22.0) [builtin/igblast, default=igblast].
-* annotateSeqDB (-aa): Database of sequences to be used by IgBLAST [imgt/ogrdb, default=imgt]. IMGT = release 202631-1 (27 July 2026); OGRDB = release 2026-05-27.
+* annotateSeqDB (-aa): Database of sequences to be used by IgBLAST [imgt/ogrdb, default=imgt]. IMGT = release 202643-4 (22 October 2026); OGRDB = release 2026-05-27.
 
 ###### Chronic lymphocytic leukemia (CLL)-specific annotations:
 * subsetsAnnotation (-subsets): Should CLL stereotype subsets be annotated? Only applicable to productive IGH gene rearrangements. 'imgt' to annotate #2 and #8 using IMGT criteria; 'major' to annotate all major subsets based on the definitions reported in Agathangelidis et al Blood 2021 [no/imgt/major, default = no].
@@ -90,6 +90,7 @@ Adjust the parameters for sequencing technique, sequencing coverage, gene to be 
 * keepInsertSizeOnlyRearrangements (-kisor): Specify if IG/TCR rearrangements supported only by insert-size reads (i.e., no split-reads) should be kept [no/yes, default = no]. If kept, they are labeled with the tag 'Rearrangement without junction coverage' and the nucleotide sequences, functionality, identity to germline, and other features are not computed. If specified, these rearrangements are reported in the filtered output independently of the value specified in the '-rop' argument.
 * collapseSequences (-cs): Collapse IG/TCR sequences if they are similar at nucleotide level. If so, the sequence of the rearrangement supported with the highest score is kept, but number of reads and read names are merged in the output [no/yes, default = yes].
 * collapseSequencesSimilarity (-css): Cutoff of similarity between two IG/TCR sequences in order to be collapsed [0-1, default=0.98].
+* collapseSameJunction (-csj): Collapse IGHV sequences if they share similar junctions (junction here defined as JD nucleotide sequence). These apparently different IGHV gene rearrangements mostly represent V-gene misalignments of the same rearrangement, especially in low-quality samples. If 'yes' [recommended option], an assembly anchored to the junction sequence is performed to reconstruct the consensus sequence [no/yes, default = yes].
 * shortReportedVseq (-shortV): Make V sequence start at (approx) FR1 [yes/no, default=yes].
 *	mappingQuality (-mq): Mapping quality cut off to filter out reads for IG/TCR V(D)J reconstruction [default=0].
 *	baseQuality (-bq): Base quality cut off for samtools mpileup for mutation analysis [default=13].
@@ -160,13 +161,13 @@ IgCaller returns a set of tab-separated files:
 The IgCaller repository bundles several third-party packages and reference files required for its operation. All of these resources are included directly within IgCaller, so users do not need to perform any additional installation or configuration steps. To ensure transparency and properly acknowledge the original sources, this section documents the external materials integrated into the tool. It is provided solely for explanatory context.
 
 * IgBLAST: Used to annotate the sequences reconstructed if specified using the '-a' argument. For more information, please see the [original website](https://ncbi.github.io/igblast/) and [license](https://ncbi.github.io/igblast/dev/copyright.html). IgBLAST is included [here](https://github.com/nadeulab/IgCaller/tree/main/IgCaller_reference_files/igblast).
-* IMGT reference sequences: IG and TCR gene sequences provided by The International Immunogenetics Information System ([IMGT](https://www.imgt.org), [license](https://imgt.org/#termsofuse)) are downloaded from their [webpage](https://www.imgt.org/vquest/refseqh.html#VQUEST) and processed using IgBLAST's 'edit_imgt_file.pl' and 'makeblastdb' functions. The use of these reference sequences can be specified using the '-aa' argument. These sequences are provided [here](https://github.com/nadeulab/IgCaller/tree/main/IgCaller_reference_files/igblast/db).
+* IMGT reference sequences: IG and TCR gene sequences provided by The International Immunogenetics Information System ([IMGT](https://www.imgt.org), [license](https://imgt.org/#termsofuse)) are downloaded from their [webpage](https://www.imgt.org/vquest/refseqh.html) and processed using IgBLAST's 'edit_imgt_file.pl' and 'makeblastdb' functions. The use of these reference sequences can be specified using the '-aa' argument. These sequences are provided [here](https://github.com/nadeulab/IgCaller/tree/main/IgCaller_reference_files/igblast/db).
 * OGRDB reference sequences: IG sequences provided by the Open Germline Receptor Database ([OGRDB](https://ogrdb.airr-community.org), [license](https://ogrdb.airr-community.org/render_page/licensing_statement.html)) are downloaded from their [webpage](https://ogrdb.airr-community.org/germline_sets) and processed using custom scripts and IgBLAST's "makeblastdb" function. The use of these reference sequences can be specified using the '-aa' argument. These sequences are provided [here](https://github.com/nadeulab/IgCaller/tree/main/IgCaller_reference_files/igblast/db).
 
 ### Releases
 * v2.0.0:
   * Added functionality to reconstruct the T-cell receptor (TCR). See [issue #10](https://github.com/ferrannadeu/IgCaller/issues/10) and argument -g for details.
-  * Added the possibility to annotate the reconstructed IG/TCR sequences using either the built-in annotation scheme of IgCaller or IgBLAST (v1.22.0) using IMGT (release 202631-1; 27 July 2026) or OGRDB (release 2026-05-27) databases (see -a and -aa). We recommend using IgBLAST coupled with IMGT (default settings), especially when paired normal (i.e., germline) BAM file is not available.
+  * Added the possibility to annotate the reconstructed IG/TCR sequences using either the built-in annotation scheme of IgCaller or IgBLAST (v1.22.0) using IMGT or OGRDB databases (see -a and -aa). We recommend using IgBLAST coupled with IMGT (default settings).
   * Added the reconstruction of partial (J-D or D-V only) rearrangements.
   * Added compatibility with data generated using amplicon-based NGS approaches (i.e., primer-based PCR amplification of IG/TCR rearrangements). See arguments -seq, -pr, -prf, and -prs for further details.
   * Added a module to calculate tumor purity based on the IG/TCR gene rearrangements (see arguments -ep, -epc, -ppc, and -pm, as well as the new output files *output_purity*).
@@ -175,6 +176,7 @@ The IgCaller repository bundles several third-party packages and reference files
   * Significant improvements on sensitivity and specificity for both IG/TCR gene rearrangements and oncogenic alterations (see -hs, -sf, and -mnns).
   * Improved phasing of reads along the V gene (see -prbm).
   * Added some optional arguments for flexibility (see -slc, -pfm, -rop, -kisor, -cs, -css, -ror, and -roor).
+  * Improved detection of real oncogenic alterations through automated filtering of high-noise sequencing regions.
   * Improved annotation of oncogenic alterations, including the identification of N-nucleotides and other improvements (see -vafOnco, -gOnco, -cgOnco, -gOncoDist, and -cgOncoDist for further details).
   * Extended panel of normals for the analysis of oncogenic rearrangements.
   * Added the possibility to report the read names of the reads associated with each specific rearrangement identified (see --rrn).
