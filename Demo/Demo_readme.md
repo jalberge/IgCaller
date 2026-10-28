@@ -6,5 +6,8 @@ The expected output is placed in the "Outputs" folder.
 In order to generate this demo, IgCaller was run using the following command line:
 
 ```
-/path/to/IgCaller/IgCaller -I /path/to/IgCaller/IgCaller_reference_files/ -T /path/to/IgCaller/Demo/BAM/1344-01-03TD.bam -N /path/to/IgCaller/Demo/BAM/1344-01-01ND.bam -pm paired -V hg19 -C ensembl -seq wgs -seqDepth low
+/path/to/IgCaller/IgCaller \
+    -I /path/to/IgCaller/IgCaller_reference_files/ -V hg19 -C ensembl \
+    -T /path/to/IgCaller/Demo/BAM/1344-01-03TD.bam -N /path/to/IgCaller/Demo/BAM/1344-01-01ND.bam \
+    -seq wgs -seqDepth low -pm paired
 ```
