@@ -33,13 +33,44 @@ chmod +x /path/to/IgCaller/IgCaller
 export PATH=/path/to/IgCaller/:$PATH
 ```
 
+### Docker
+
+You can build a Docker image using this [Dockerfile](https://github.com/nadeulab/IgCaller/blob/main/Dockerfile).
+
+Note: The bundled Linux IgBLAST executable is x86-64. On ARM64 hosts like Apple M-series chips, build and run the image for `linux/amd64` as follows:
+
+```
+docker build --platform linux/amd64 -t igcaller:local .
+```
+
 ### Running IgCaller
 
 #### Basic command line:
 
 Basic command line to analyze the IG of a tumor sample processed by WGS at 30x with paired normal sample available:
+
 ```
-/path/to/IgCaller/IgCaller -I /path/to/IgCaller/IgCaller_reference_files/ -V hg19 -C ensembl -T /path/to/bams/tumor.bam -seq wgs -seqDepth low -N /path/to/bams/normal.bam -pm paired -R /path/to/reference/genome_hg19.fa -o /path/to/IgCaller/outputs/
+/path/to/IgCaller/IgCaller \
+  -I /path/to/IgCaller/IgCaller_reference_files/ -V hg19 -C ensembl \
+  -T /path/to/bam/tumor.bam -N /path/to/bam/normal.bam \
+  -seq wgs -seqDepth low -pm paired \
+  -R /path/to/reference/genome_hg19.fa \
+  -o /path/to/output/
+```
+
+Or using Docker:
+
+```
+docker run --platform linux/amd64 --rm \
+  -v /path/to/reference:/reference:ro \
+  -v /path/to/bam:/data:ro \
+  -v /path/to/output:/output \
+  igcaller:local \
+  -I /IgCaller/IgCaller_reference_files/ -V hg19 -C ensembl \
+  -T /data/tumor.bam -N /data/normal.bam \
+  -seq wgs -seqDepth low -pm paired \
+  -R /reference/genome_hg19.fa \
+  -o /output
 ```
 
 Adjust the parameters for sequencing technique, sequencing coverage, gene to be analyzed, etc. as explained below:
