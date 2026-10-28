@@ -4,12 +4,12 @@
 
 #### Reconstructing immunoglobulin (IG) B-cell receptor and T-cell receptor (TCR) gene rearrangements and oncogenic translocations from genomic data in lymphoid neoplasms
 
-IgCaller is a python program designed to fully characterize the immunoglobulin (IG) B-cell receptor and T-cell receptor (TCR) gene rearrangements and oncogenic translocations in lymphoid neoplasms. It was originally developed to reconstruct the IG gene from WGS data. More recently, it has been extended to characterize also the TCR and to work with WES, capture-based NGS, and amplicon-based NGS data. For more information, read the original [publication](https://rdcu.be/b5tsw) and the manual below.
+IgCaller is a Python program designed to fully characterize the immunoglobulin (IG) B-cell receptor and T-cell receptor (TCR) gene rearrangements and oncogenic translocations in lymphoid neoplasms. It was originally developed to reconstruct the IG gene from WGS data. More recently, it has been extended to characterize also the TCR and to work with WES, capture-based NGS, and amplicon-based NGS data. For more information, read the original [publication](https://rdcu.be/b5tsw) and the manual below.
 
 
 ### Requirements
 
-* IgCaller is based on python3 and requires the following modules: statistics, regex (v2.5.33 and 2.5.109), argparse (v1.1), numpy (1.18.3 and 1.24.4), scipy (v1.5.2, v1.8.0 and v1.13.1), biopython (v1.81 and v1.85), pandas (v1.0.3 and v2.3.1), seaborn (v0.11.2 and v0.13.2), and matplotlib (v3.0.3 and v3.10.5). Although providing the versions of the modules tested, we are not aware about any specific version requirement for running IgCaller. Other modules used by IgCaller but already included in base python are: subprocess, sys, os, itertools, operator, collections, gzip, pickle, and difflib.
+* IgCaller is based on Python (tested on Python 3.13.2) and requires the following modules: regex (2026.9.29), numpy (2.5.4), scipy (1.16.3), biopython (1.88), pandas (3.1.0), seaborn (0.13.2), and matplotlib (3.11.2). Although providing the versions of Python and modules tested, we are not aware about any specific requirement. Other modules used by IgCaller but already included in base Python are: subprocess, sys, os, datetime, argparse, itertools, operator, platform, statistics, collections, gzip, pickle, difflib, and bisect.
 * The only required non-python program is [samtools](http://www.htslib.org) (versions: 1.16.1, 1.21 and 1.22).
 * IgCaller has been validated exclusively on BAM files aligned with [BWA-MEM](http://bio-bwa.sourceforge.net/) (versions: 0.7.15 and 0.7.17).
 
@@ -21,7 +21,7 @@ Download and uncompress the ZIP file or clone the IgCaller repository:
 git clone https://github.com/nadeulab/IgCaller
 ```
 
-Starting at version 1.4-beta, run the following command to allow executable permissions:
+Run the following command to allow executable permissions:
 
 ```
 chmod +x /path/to/IgCaller/IgCaller
