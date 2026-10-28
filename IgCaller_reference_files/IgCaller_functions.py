@@ -9,7 +9,8 @@ import regex as re
 import numpy as np
 import itertools
 import operator
-from collections import Counter
+from collections import Counter, defaultdict
+from bisect import bisect_left, bisect_right
 from scipy import stats
 from statistics import mean
 from statistics import median
@@ -72,10 +73,10 @@ def alignWithoutInternalGap(seqA, seqB):
 	aligner.mismatch_score = -1
 	aligner.open_gap_score = -1000
 	aligner.extend_gap_score = -1000
-	aligner.left_open_gap_score = 0
-	aligner.left_extend_gap_score = 0
-	aligner.right_open_gap_score = 0
-	aligner.right_extend_gap_score = 0
+	aligner.open_left_gap_score = 0
+	aligner.extend_left_gap_score = 0
+	aligner.open_right_gap_score = 0
+	aligner.extend_right_gap_score = 0
 	align = aligner.align(seqA, seqB)
 	return(align)
 
@@ -2392,6 +2393,275 @@ def doCollapseSequences(information, collapseSequencesSimilarity, GENE):
 	updatedInformation.sort(key=lambda p: round(p[2]*2 + p[3] + p[6]*2 + p[9]*2, 1), reverse=True)
 	return(updatedInformation)
 
+def adjustIndelInSeqToMatchRawRead(inSeq):
+	# remove deletions from seq but keep insertions to match raw reads
+	outSeq = re.sub(r"\(.*?\)", "", inSeq).replace("[", "").replace("]", "")
+	return(outSeq)
+
+def differByAtMostX(s1, s2, maxMismatches=2):
+    if len(s1) != len(s2): return(False)
+    mismatches = 0
+    for a, b in zip(s1, s2):
+        if a != b:
+            mismatches += 1
+            if mismatches > maxMismatches: return(False)
+    return(True)
+
+def endswithPartial(s, sub, minLen):
+	for i in range(len(sub), minLen, -1):
+		if s.endswith(sub[:i]):
+			return(i)
+	return("NA")
+
+def startswithPartial(s, sub, minLen):
+	for i in range(0, len(sub)-minLen, 1):
+		if s.startswith(sub[i:]):
+			return(i)
+	return("NA")
+
+def getConsensus(assembly):
+	consensusSeq = []
+	for colAssembly in zip(*assembly):
+		counts = Counter(nt for nt in colAssembly if nt != 'N')
+		if counts:
+			if len(counts) == 1 or (len(counts) >= 2 and counts.most_common(2)[0][1]/(counts.most_common(2)[0][1] + counts.most_common(2)[1][1]) >= 0.75):
+				consensusSeq.append(counts.most_common(1)[0][0])
+			else:
+				break
+		else:
+			break
+	return("".join(consensusSeq))
+
+def expandSeq(samToRead, readNamesSeqsUsed, consensusSeq, consensusSeqExpanded, maxLenJDV, startingOverlap, minOverlap, maxOverlap=140):
+	startingOverlap = startingOverlap if startingOverlap < maxOverlap else maxOverlap
+	overlap = startingOverlap
+	maxLen = maxLenJDV - len(consensusSeqExpanded)
+	continueIterating = True
+	while continueIterating:
+		assemblyExpand = []
+		reads = open(samToRead, "r")
+		for read in reads:
+			seqToStore = ""
+			readList = read.rstrip("\n").split("\t")
+			readNameIn = readList[0]
+			seqIn = readList[9]
+			if readNameIn+"_"+seqIn in readNamesSeqsUsed: continue				
+			if consensusSeq == seqIn or seqIn in consensusSeq: continue
+			idxStartPartial = startswithPartial(seqIn, consensusSeqExpanded, overlap)
+			if idxStartPartial != "NA": 
+				seqToStore = seqIn[len(consensusSeqExpanded[int(idxStartPartial):]):]
+				if seqToStore != "":
+					if len(seqToStore) < maxLen: seqToStore = seqToStore+("N"*(maxLen-len(seqToStore)))
+					else: seqToStore = seqToStore[:maxLen]
+					assemblyExpand.append(list(seqToStore))
+					readNamesSeqsUsed.append(readNameIn+"_"+seqIn)
+		reads.close()
+		if (len(assemblyExpand) > 2) or (len(assemblyExpand) > 0 and overlap == minOverlap):
+			consensusSeqExpanded = consensusSeqExpanded+getConsensus(assemblyExpand)
+			overlap = startingOverlap
+			maxLen = maxLenJDV - len(consensusSeqExpanded)
+			if len(consensusSeqExpanded) >= maxLenJDV: continueIterating = False
+		else:
+			if overlap > minOverlap: overlap = overlap-5 if overlap-5 > minOverlap else minOverlap
+			else: continueIterating = False
+	return(consensusSeqExpanded, readNamesSeqsUsed)
+
+def doCollapseSameJunction(information, miniBamT, annot_table_JV, minimumNumberOfNucleotidesSoft, chrom, mapq, pathToSamtools, threadsForSamtools):
+	
+	# get repeated JD seqs
+	repeatedJDseq = []
+	repeatedJDseqLowScore = [] 
+	for idx in range(0, len(information), 1):
+		alreadyRep = "no"
+		i = information[idx]
+		if i[11] == "NA" or i[12] == "NA" or i[13] == "NA": continue
+		score = round(i[2]*2 + i[3] + i[6]*2 + i[9]*2, 1)
+		jdSeq = adjustIndelInSeqToMatchRawRead(i[11]+i[12])
+		jdvSeq = adjustIndelInSeqToMatchRawRead(i[16])
+		for repJD in repeatedJDseq+repeatedJDseqLowScore:
+			repJD = repJD.split("_")[0]
+			if jdSeq == repJD or differByAtMostX(jdSeq, repJD) or jdSeq.startswith(repJD) or repJD.startswith(jdSeq) or jdvSeq.startswith(repJD):
+				alreadyRep = "yes"
+				break
+		if alreadyRep == "no":
+			for idx2 in range(idx+1, len(information), 1):
+				i2 = information[idx2]
+				if i2[11] == "NA" or i2[12] == "NA" or i2[13] == "NA": continue
+				score2 = round(i2[2]*2 + i2[3] + i2[6]*2 + i2[9]*2, 1)
+				jdSeq2 = adjustIndelInSeqToMatchRawRead(i2[11]+i2[12])
+				jdvSeq2 = adjustIndelInSeqToMatchRawRead(i2[16])
+				if jdSeq == jdSeq2 or differByAtMostX(jdSeq, jdSeq2) or jdSeq.startswith(jdSeq2) or jdSeq2.startswith(jdSeq) or jdvSeq2.startswith(jdSeq):
+					if score*0.5 < score2:
+						repeatedJDseq.append(jdSeq)
+					else:
+						repeatedJDseqLowScore.append(jdSeq+"_"+str(score))
+					break
+	
+	# iterate each repeated JD seq
+	newInformation = []
+	newJDsList = []
+	for repJD in repeatedJDseq:
+
+		# get all readNames, readNamesPhasedMut, maxLenJVD, and V-gene coordinates
+		readNames = []
+		readNamesPhasedMut = []
+		maxLenJDV = 0
+		vGeneCoordsToSubset = []
+		for i in information:
+			jdSeq = adjustIndelInSeqToMatchRawRead(i[11]+i[12])
+			jdvSeq = adjustIndelInSeqToMatchRawRead(i[16])
+			if jdSeq == repJD or differByAtMostX(jdSeq, repJD) or jdSeq.startswith(repJD) or repJD.startswith(jdSeq) or jdvSeq.startswith(repJD):
+				readNames.extend(i[17].split(",")+i[18].split(",")+i[19].split(","))
+				readNamesPhasedMut.extend(i[20].split(","))
+				vGeneCoordsToSubset.append(chrom+"14:"+str(i[7])+"-"+str(i[8]))
+				if len(jdvSeq) >= maxLenJDV: maxLenJDV = len(jdvSeq)
+		readNames = list(set(readNames))
+		readNames = [x for x in readNames if x != ""]
+		readNamesPhasedMut = list(set(readNamesPhasedMut))
+		readNamesPhasedMut = [x for x in readNamesPhasedMut if x != ""]
+		vGeneCoordsToSubset = " ".join(vGeneCoordsToSubset)
+		
+		# create first assembly: iterate readnames and create assembly with reads overlaping the junction
+		readNamesSeqsUsed = [] # list to store readName_readSeq of reads used
+		assembly = []
+		annot_table_JV_to_use = annot_table_JV.replace(".tsv", "_onlyBreaksInInfo.tsv")
+		ANNOT_TABLE_JV = open(annot_table_JV_to_use, "r")
+		for jvLine in ANNOT_TABLE_JV:
+			jvList = jvLine.rstrip("\n").split("\t")
+			if jvList[0] in readNames:
+				seqToStore = ""
+				seqIn = jvList[9]
+				# check if repJD in seqIn
+				if repJD in seqIn:
+					matchInfo = re.search(repJD, seqIn)
+					seqToStore = seqIn[matchInfo.start():]
+				# or partial overlap (endswith or startswith fraction of repJD)
+				else:
+					idxEndPartial = endswithPartial(seqIn, repJD, minimumNumberOfNucleotidesSoft)
+					idxStartPartial = startswithPartial(seqIn, repJD, minimumNumberOfNucleotidesSoft)
+					if idxEndPartial != "NA": seqToStore = seqIn[-int(idxEndPartial):]
+					elif idxStartPartial != "NA": seqToStore = "N"*int(idxStartPartial)+seqIn
+				# if seqToStore, append to assembly
+				if seqToStore != "":
+					if len(seqToStore) < maxLenJDV: seqToStore = seqToStore+("N"*(maxLenJDV-len(seqToStore)))
+					assembly.append(list(seqToStore))
+					readNamesSeqsUsed.append(jvList[0]+"_"+jvList[9])
+		ANNOT_TABLE_JV.close()
+		
+		# get consensusSeq with reads overlaping the junction
+		consensusSeq = getConsensus(assembly)
+		if consensusSeq == "": consensusSeq = repJD
+		
+		# expand consensusSeq with reads overlapping the last fraction of the consensusSeq, if needed
+		consensusSeqExpanded = consensusSeq # initialize consensusSeqExpanded
+		if len(consensusSeqExpanded) < maxLenJDV:
+			readNamesFileTxt = miniBamT.replace("miniBam.bam", "readNamesForCollapse.txt")
+			readNamesFile = open(readNamesFileTxt, "w")
+			readNamesFile.write("\n".join(readNames))
+			readNamesFile.close()
+			samToRead = miniBamT.replace("miniBam.bam", "miniSam_readNamesForCollapse.sam")
+			subprocess.call(pathToSamtools+"samtools view -@ "+threadsForSamtools+" -N "+readNamesFileTxt+" "+miniBamT+" > "+samToRead, shell=True)
+			startingOverlap = len(consensusSeqExpanded)
+			consensusSeqExpanded, readNamesSeqsUsed = expandSeq(samToRead, readNamesSeqsUsed, consensusSeq, consensusSeqExpanded, maxLenJDV, startingOverlap, minOverlap = 10)
+		
+		# expand consensusSeqExpanded with reads phased by mutations to previous rearrangements that overlap the V fraction of the consensusSeqExpanded, if needed
+		if len(consensusSeqExpanded) < maxLenJDV and len(readNamesPhasedMut) > 0:
+			readNamesFileTxt = miniBamT.replace("miniBam.bam", "readNamesForCollapse.txt")
+			readNamesFile = open(readNamesFileTxt, "w")
+			readNamesFile.write("\n".join(readNamesPhasedMut))
+			readNamesFile.close()
+			samToRead = miniBamT.replace("miniBam.bam", "miniSam_readNamesForCollapse.sam")
+			subprocess.call(pathToSamtools+"samtools view -@ "+threadsForSamtools+" -N "+readNamesFileTxt+" "+miniBamT+" > "+samToRead, shell=True)
+			startingOverlap = len(consensusSeqExpanded)
+			consensusSeqExpanded, readNamesSeqsUsed = expandSeq(samToRead, readNamesSeqsUsed, consensusSeq, consensusSeqExpanded, maxLenJDV, startingOverlap, minOverlap = 30)
+		
+		# expand consensusSeqExpanded with most similar reads in the V genes of the previous rearrangements, if needed
+		if len(consensusSeqExpanded) < maxLenJDV:
+			samToRead = miniBamT.replace(".bam", "miniSam_readsWithinVgene.sam")
+			subprocess.call(pathToSamtools+"samtools view -@ "+threadsForSamtools+" -q "+mapq+" "+miniBamT+" "+vGeneCoordsToSubset+" > "+samToRead, shell=True)
+			startingOverlap = len(consensusSeqExpanded)
+			consensusSeqExpanded, readNamesSeqsUsed = expandSeq(samToRead, readNamesSeqsUsed, consensusSeq, consensusSeqExpanded, maxLenJDV, startingOverlap, minOverlap = 50)
+		
+		# add to newInformation: add updated info to the item in information that is more similar (to mantain breaks that make more sense)
+		tmpInfo = ""
+		maxScore = 0
+		jvPairList = []
+		i2 = 0
+		i3 = 0
+		i17 = ""
+		i18 = ""
+		i19 = ""
+		# collapse rescued reads and split/insert counts and find best match
+		for i in information:
+			jdSeq = adjustIndelInSeqToMatchRawRead(i[11]+i[12])
+			jdvSeq = adjustIndelInSeqToMatchRawRead(i[16])
+			jvPair = i[0].split(" - ")[0]+" - "+i[0].split(" - ")[-1]
+			if repJD == jdSeq or differByAtMostX(repJD, jdSeq) or jdSeq.startswith(repJD) or repJD.startswith(jdSeq) or jdvSeq.startswith(repJD):
+				i2 += i[2] # split reads are counted every time since they have different breakpoints
+				if jvPair not in jvPairList: # to count insert-size reads in the same J-V pair only once
+					i3 += i[3]
+					jvPairList.append(jvPair)
+				i17 = i17 if i[17] == "" else i[17] if i17 == "" else i17+","+i[17]
+				i18 = i18 if i[18] == "" else i[18] if i18 == "" else i18+","+i[18]
+				i19 = i19 if i[19] == "" else i[19] if i19 == "" else i19+","+i[19]
+				# force stitching without internal gap
+				align = alignWithoutInternalGap(consensusSeqExpanded, i[16].rstrip("N"))[0]
+				if align.score > maxScore:
+					maxScore = align.score
+					tmpInfo = i.copy()
+					tmpInfo[11] = adjustIndelInSeqToMatchRawRead(tmpInfo[11])
+					tmpInfo[12] = adjustIndelInSeqToMatchRawRead(tmpInfo[12])
+					tmpInfo[13] = adjustIndelInSeqToMatchRawRead(tmpInfo[13])
+					tmpInfo[14] = adjustIndelInSeqToMatchRawRead(tmpInfo[14])
+					tmpInfo[16] = adjustIndelInSeqToMatchRawRead(tmpInfo[16])
+		# update info to best match
+		tmpInfo[2] = i2
+		tmpInfo[3] = i3
+		tmpInfo[17] = ",".join(list(set(i17.split(","))))
+		tmpInfo[18] = ",".join(list(set(i18.split(","))))
+		tmpInfo[19] = ",".join(list(set(i19.split(","))))
+		tmpInfo[6] = len(tmpInfo[18].split(","))
+		tmpInfo[9] = len(tmpInfo[19].split(","))
+		tmpInfo[11] = consensusSeqExpanded[:len(tmpInfo[11])]
+		tmpInfo[12] = consensusSeqExpanded[len(tmpInfo[11]):len(tmpInfo[11]+tmpInfo[12])]
+		vGerm = tmpInfo[14]
+		if len(consensusSeqExpanded) >= len(tmpInfo[16]): consensusSeqExpanded = consensusSeqExpanded[:len(tmpInfo[16])]
+		vSomConsensus = consensusSeqExpanded[len(tmpInfo[11]+tmpInfo[12]):]
+		numMutsConsensus = str(len([idx for idx in range(0, len(vSomConsensus) if len(vSomConsensus) <= len(vGerm) else len(vGerm), 1) if vSomConsensus[idx] != vGerm[idx]])) 
+		tmpInfo[15] = numMutsConsensus+"/"+numMutsConsensus+" - 0 - 0"
+		tmpInfo[13] = consensusSeqExpanded[len(tmpInfo[11]+tmpInfo[12]):]
+		tmpInfo[8] = tmpInfo[7]+len(tmpInfo[13])-1
+		tmpInfo[14] = tmpInfo[14][:len(tmpInfo[13])]
+		tmpInfo[16] = consensusSeqExpanded
+		newJD = tmpInfo[11]+tmpInfo[12]
+		if newJD not in newJDsList:
+			newInformation.append(tmpInfo)
+			newJDsList.append(newJD)
+	
+	# add to newInformation the items from information that do not have repeated junctions
+	for i in information:
+		score = round(i[2]*2 + i[3] + i[6]*2 + i[9]*2, 1)
+		jdSeq = adjustIndelInSeqToMatchRawRead(i[11]+i[12])
+		jdvSeq = adjustIndelInSeqToMatchRawRead(i[16])
+		needToAddToNewInfo = "yes"
+		# check if in repeatedJDseq
+		if jdSeq in repeatedJDseq or any(differByAtMostX(jdSeq, s2) for s2 in repeatedJDseq) or any(jdSeq.startswith(s2) for s2 in  repeatedJDseq) or any(s2.startswith(jdSeq) for s2 in repeatedJDseq) or jdvSeq.startswith(tuple(repeatedJDseq)): 
+			needToAddToNewInfo = "no"
+		# check if in repeatedJDseqLowScore
+		for lowScore in repeatedJDseqLowScore:
+			s2 = lowScore.split("_")[0]
+			cutoff = float(lowScore.split("_")[1])
+			if jdSeq == s2 or differByAtMostX(jdSeq, s2) or jdSeq.startswith(s2) or s2.startswith(jdSeq) or jdvSeq.startswith(s2): 
+				if score < cutoff:
+					needToAddToNewInfo = "no"
+				break
+		if needToAddToNewInfo == "yes":
+			newInformation.append(i)
+	
+	# sort newInformation and return
+	newInformation.sort(key=lambda p: round(p[2]*2 + p[3] + p[6]*2 + p[9]*2, 1), reverse=True)
+	return(newInformation)
+
 def calculateHomology(hom, homN):
 	ct = 0 # sum total nucleotides
 	ce = 0 # sum equal nucleotides
@@ -2954,11 +3224,14 @@ def igBlastAnnotate(information, GENE, wkDir, inputsFolder, germline_db_J, germl
 				# Homology
 				fr1fr3_t = "NA"
 				fr1fr3_gl = "NA"
-				if igblastList[87] != "" and igblastList[78] != "": # FR1-CDR1-FR2-CDR2-FR3
-					fr1fr3_length = int(igblastList[87])-int(igblastList[78])+1
+				if igblastList[87] != "": # FR1-CDR1-FR2-CDR2-FR3
+					if igblastList[78] != "":
+						fr1fr3_length = int(igblastList[87])-int(igblastList[78])+1
+					else:
+						fr1fr3_length = int(igblastList[87])
 					fr1fr3_t = igblastList[14][:fr1fr3_length]
 					fr1fr3_gl = igblastList[15][:fr1fr3_length]
-				else:
+				else: # V sequence
 					fr1fr3_t = igblastList[24] # v_sequence_alignment from igblast
 					fr1fr3_gl = igblastList[26] # v_germline_alignment from igblast
 
@@ -3144,6 +3417,7 @@ def predefinedFilter(information, seq, seqDepth, reportOnlyProductive, scoreCuto
 		
 		## Unknown (N) nucleotides in sequence
 		if "Kde" not in line[0] and "RSS" not in line[0] and line[19] != "Partial rearrangement" and line[19] != "Rearrangement without junction coverage":
+			if len(line[13]) == 0: continue # remove if no V nucleotides
 			if seq == "wgs" and sum(1 for i in line[13] if i == "N")/len(line[13]) > 0.5: continue # remove rearrangement if >50% of the V sequence are "N"s for WGS-derived samples
 			if sum(1 for i in line[11] if i == "N")/len(line[11]) > 0.5: continue # remove rearrangement if >50% of the J sequence are "N"s
 		
@@ -3707,7 +3981,7 @@ def classSwitchAnalysis(wkDir, data, annot_table_JV, bedFile, baseq, chromGene, 
 	return(class_switch, class_switch_filt, reductionMeans)
 
 def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, threadsForSamtools, coordsToSubset, bamT, bamN, chrom, geneToAnalyze, tumorPurity, mntonco, mntoncoPass, vafOnco, mnnonco, mapqOnco, mncPoN, genesOncoIg, customGenesOncoIg, genesOncoIgDistance, customGenesOncoIgDistance, reportReadNames, errLogSamtools):
-	
+
 	if genomeVersion == "hg19":
 		chrom14_IGH = [106030000, 107290000] # IGH region 
 		chrom2_IGK = [89131589, 90274600] # IGK region
@@ -3715,6 +3989,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 		chrom14_TRA_TRD = [22069991, 23034042] # TRA region (TRD within TRA)
 		chrom7_TRB = [141979017, 142531084] # TRB region
 		chrom7_TRG = [38272981, 38427770] # TRG region
+		AllGenesBedToOpen = inputsFolder+"/hg19/dicts/AllRegionsAndGenes_hg19.bed"
 	else:
 		chrom14_IGH = [105576937, 106889844] # IGH region 
 		chrom2_IGK = [88822278, 90245370] # IGK region
@@ -3722,6 +3997,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 		chrom14_TRA_TRD = [21611904, 22562132] # TRA region (TRD within TRA)
 		chrom7_TRB = [142289011, 142823287] # TRB region
 		chrom7_TRG = [38230024, 38378055] # TRG region
+		AllGenesBedToOpen = inputsFolder+"/hg38/dicts/AllRegionsAndGenes_hg38.bed"
 
 	chroms = [chrom+str(i) for i in range(1,22)]+[chrom+"X", chrom+"Y", "="] # chroms considered ("=" to consider deletions/inversions/gains within the same chromosome)
 	
@@ -3729,7 +4005,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 	comms = pathToSamtools+"samtools view -@ "+threadsForSamtools+" -q "+mapqOnco+" "+bamT+" "+coordsToSubset+" > "+samT
 	subprocess.call(comms, shell=True)
 	
-	# 1. annotate potential 1-read translocations
+	# 1. Annotate potential 1-read translocations
 	dicForTranslocations = {} 
 	dicForTranslocations[chrom+"2"] = {}
 	dicForTranslocations[chrom+"7"] = {}
@@ -3874,7 +4150,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 
 	samfile.close()
 	
-	# 2. Merge individual one-read translocations into potential translocations (kep only if number of reads (ie score) > mntonco)
+	# 2. Merge individual one-read translocations into potential translocations
 	translocations = {}
 	translocations[chrom+"2"] = {}
 	translocations[chrom+"7"] = {}
@@ -3966,22 +4242,81 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 			mapQualList = list()
 			readNameList = list()
 	
-	# filter based on mntonco cutoff and prepare coordsToSubsetNormal bam file
+	# 3. Get breakpoints
+	translocationsBreaks = {}
+	translocationsBreaks[chrom+"2"] = {}
+	translocationsBreaks[chrom+"7"] = {}
+	translocationsBreaks[chrom+"14"] = {}
+	translocationsBreaks[chrom+"22"] = {}
+	for key1 in translocations:
+		for key2 in translocations[key1]:
+			for item in translocations[key1][key2]:
+				# break 1
+				pos1_vals = list(map(int, item[1].split("-")))
+				position1, supportForPosition1 = Counter(pos1_vals).most_common(1)[0]
+				if supportForPosition1 < 10:
+					position1 = max(pos1_vals) if item[2] == "+" else min(pos1_vals)
+				item[1] = position1
+				# break 2
+				pos2_vals = list(map(int, item[4].split("-")))
+				position2, supportForPosition2 = Counter(pos2_vals).most_common(1)[0]
+				if supportForPosition2 < 10:
+					position2 = max(pos2_vals) if item[5] == "+" else min(pos2_vals)
+				item[4] = position2
+				# add to dict
+				if key2 in translocationsBreaks[key1]: translocationsBreaks[key1][key2].append(item)
+				else: translocationsBreaks[key1][key2] = [ item ]
+	
+	# 4. Detect noisy positions (>3 different SVs within a 50bp window, excluding IG/TCR expected genes/regions)
+	## prepare list of positions for each chrom
+	translocationsForNoiseDetection = defaultdict(list)
+	for key1 in translocationsBreaks:
+		for key2 in translocationsBreaks[key1]:
+			for item in translocationsBreaks[key1][key2]:
+				pos1inRegion = "no"
+				AllGenesBed = open(AllGenesBedToOpen, "r")
+				for AllGenesBedLine in AllGenesBed:
+					AllGenesBedList = AllGenesBedLine.rstrip("\n").split("\t")
+					if key1.replace("chr", "") == AllGenesBedList[0] and int(item[1]) >= (int(AllGenesBedList[1])-5) and int(item[1]) <= (int(AllGenesBedList[2])+5):
+						pos1inRegion = "yes"
+						break
+				AllGenesBed.close()
+				if pos1inRegion == "no": translocationsForNoiseDetection[key1].append(item[1])
+				translocationsForNoiseDetection[key2].append(item[4])
+	translocationsForNoiseDetection = { k: sorted(v) for k, v in translocationsForNoiseDetection.items() }
+	## iterate and get noisy positions
+	noisyPositionsForFiltering = {}
+	for key, pos_list in translocationsForNoiseDetection.items():
+		noisy_positions = (set())
+		for p in pos_list:
+			left_idx = bisect_left(pos_list, p)
+			right_idx = bisect_right(pos_list, p + 50)
+			count = right_idx - left_idx
+			if count > 3:
+				noisy_positions.update(pos_list[left_idx:right_idx])
+		if noisy_positions:
+			noisyPositionsForFiltering[key] = sorted(noisy_positions)
+
+	# 5. Filter based on noisy positions and mntonco cutoff, and prepare coordsToSubsetNormal bam file
 	coordsToSubsetNormal = []
 	translocationsFiltered = {}
 	translocationsFiltered[chrom+"2"] = {}
 	translocationsFiltered[chrom+"7"] = {}
 	translocationsFiltered[chrom+"14"] = {}
 	translocationsFiltered[chrom+"22"] = {}
-	for key1 in translocations:
-		for key2 in translocations[key1]:
-			for item in translocations[key1][key2]: 				
-				if item[6] >= mntonco:
-					if key2 in translocationsFiltered[key1]: translocationsFiltered[key1][key2].append(item)
-					else: translocationsFiltered[key1][key2] = [ item ]
-					coordsToSubsetNormal.append(item[0]+":"+str(min(map(int, item[1].split("-")))-200)+"-"+str(max(map(int, item[1].split("-")))+200))
+	for key1 in translocationsBreaks:
+		for key2 in translocationsBreaks[key1]:
+			for item in translocationsBreaks[key1][key2]:
+				# filters
+				if key1 in noisyPositionsForFiltering and item[1] in noisyPositionsForFiltering[key1]: continue
+				if key2 in noisyPositionsForFiltering and item[4] in noisyPositionsForFiltering[key2]: continue
+				if item[6] < mntonco: continue
+				# if no filtered...
+				if key2 in translocationsFiltered[key1]: translocationsFiltered[key1][key2].append(item)
+				else: translocationsFiltered[key1][key2] = [ item ]
+				coordsToSubsetNormal.append(item[0]+":"+str(item[1]-200)+"-"+str(item[1]+200))
 	
-	# 3. Annotate in normal
+	# 6. Annotate in normal
 	if any(translocationsFiltered.values()) and bamN is not None:
 
 		samN = wkDir+"/tmp/"+bamN.split("/")[-1].replace(".bam", ".sam")
@@ -4061,13 +4396,13 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 				if inChrom not in translocationsFiltered: continue
 				if outChrom not in translocationsFiltered[inChrom]: continue
 				for trans in translocationsFiltered[inChrom][outChrom]:
-					if trans[0] == inChrom and min(map(int, trans[1].split("-")))-200 <= posInChrom and max(map(int, trans[1].split("-")))+200 >= posInChrom and trans[2] == strandInChrom and trans[3] == outChrom and min(map(int, trans[4].split("-")))-1000 <= posOutChrom and max(map(int, trans[4].split("-")))+1000 >= posOutChrom and trans[5] == strandOutChrom:
+					if trans[0] == inChrom and trans[1]-200 <= posInChrom and trans[1]+200 >= posInChrom and trans[2] == strandInChrom and trans[3] == outChrom and trans[4]-1000 <= posOutChrom and trans[4]+1000 >= posOutChrom and trans[5] == strandOutChrom:
 						trans[11] = trans[11]+1
 						readNamesUsedInNormal.append(w[0])
 		
 		samfile.close()
-
-	# 4. Prepare output, and annotate RepeatMasker and GeneID
+	
+	# 7. Prepare output, and annotate RepeatMasker and GeneID
 	mask_expand = 20
 	if genomeVersion == "hg19":
 		RepeatMasker_dicti = pickle.load(gzip.open(inputsFolder+'/hg19/dicts/RepeatMasker_rmsk_hg19_dictionary.pkl.gz', 'rb'))
@@ -4096,7 +4431,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 	for i in translocationsList:
 
 		if i[0] == i[3]:
-			if int((min(map(int, i[1].split("-"))) if i[2] == "-" else max(map(int, i[1].split("-"))))) < int((min(map(int, i[4].split("-"))) if i[5] == "-" else max(map(int, i[4].split("-"))))):
+			if i[1] < i[4]:
 				idxA = 0
 				idxB = 3
 			else:
@@ -4104,18 +4439,11 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 				idxB = 0
 			
 			chrA = i[idxA]
+			positionA = str(i[idxA+1])
 			strandA = i[idxA+2]
-			positionA, supportForPositionA = Counter(map(int, i[idxA+1].split("-"))).most_common(1)[0]
-			if supportForPositionA < 10:
-				positionA = max(map(int, i[idxA+1].split("-"))) if strandA == "+" else min(map(int, i[idxA+1].split("-")))
 			chrB = i[idxB]
+			positionB = str(i[idxB+1])
 			strandB = i[idxB+2]
-			positionB, supportForPositionB = Counter(map(int, i[idxB+1].split("-"))).most_common(1)[0]
-			if supportForPositionB < 10:
-				positionB = max(map(int, i[idxB+1].split("-"))) if strandB == "+" else min(map(int, i[idxB+1].split("-")))
-			
-			positionA = str(positionA)
-			positionB = str(positionB)
 
 			if strandA == "+" and strandB == "-": 
 				mechanism = "Deletion"
@@ -4141,20 +4469,12 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 				idxB = 0
 			
 			chrA = i[idxA]
+			positionA = str(i[idxA+1])
 			strandA = i[idxA+2]
-
-			positionA, supportForPositionA = Counter(map(int, i[idxA+1].split("-"))).most_common(1)[0]
-			if supportForPositionA < 10:
-				positionA = max(map(int, i[idxA+1].split("-"))) if strandA == "+" else min(map(int, i[idxA+1].split("-")))
 			chrB = i[idxB]
+			positionB = str(i[idxB+1])
 			strandB = i[idxB+2]
-			positionB, supportForPositionB = Counter(map(int, i[idxB+1].split("-"))).most_common(1)[0]
-			if supportForPositionB < 10:
-				positionB = max(map(int, i[idxB+1].split("-"))) if strandB == "+" else min(map(int, i[idxB+1].split("-")))
-			
-			positionA = str(positionA)
-			positionB = str(positionB)
-		
+				
 		score = round( i[6] / tumorPurity, 1 )
 		nNucleotidesFinal = "NA" if all(i == "NA" for i in i[7].split("-")) else Counter(i for i in i[7].split("-") if i != "NA").most_common(1)[0][0]
 		nSplits = i[8].split("-").count("split")
@@ -4169,10 +4489,6 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 		## RepeatMasker and GeneID:
 		minDistance = genesOncoIgDistance
 		repeatMasker = "none"
-		if genomeVersion == "hg19":
-			AllGenesBedToOpen = inputsFolder+"/hg19/dicts/AllRegionsAndGenes_hg19.bed"
-		elif genomeVersion == "hg38":
-			AllGenesBedToOpen = inputsFolder+"/hg38/dicts/AllRegionsAndGenes_hg38.bed"
 		
 		## Iterate breakA
 		breakAisIG = "no"
@@ -4342,7 +4658,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 		if vafAdj > 0:
 			translocationsALL.append("\t".join([traAnnot, mechanism, str(score), mapQualReport, str(numReads), readTypeFinal, vafString, str(scoreNormal), str(ponCount), repeatMasker, chrA, positionA, strandA, chrB, positionB, strandB, nNucleotidesFinal, geneID, str(minDistance), readNamesReport, i[10], i[8]]))
 	
-	# 5. Merge translocations same non-IG break, different IG-break within locus
+	# 8. Merge translocations same non-IG break, different IG-break within locus
 	## note1: MQ and Depths_and_VAFs are not merged but considered only those mapping to the breakpoint retained
 	## note2: to merge: same non-IG chrom, position, strand, and len(N_nucleotides)
 	mergedTranslocationsALL = []
@@ -4381,8 +4697,8 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 			trList[5] = str(nSplits)+" split + "+str(nPaired)+" paired" # Read_types
 			trStringToSave = "\t".join(trList[:19])+("" if reportReadNames == "no" else "\t"+trList[19])
 			mergedTranslocationsALL.append(trStringToSave)
-
-	# 6. Prepare PASS list
+	
+	# 9. Prepare PASS list
 	mergedTranslocationsALL = sorted(mergedTranslocationsALL, key=lambda x: float(x.split("\t")[2]), reverse=True)
 	translocationsPASS = list()
 	for tr in mergedTranslocationsALL:
@@ -4411,7 +4727,7 @@ def getIgTranslocations(wkDir, genomeVersion, inputsFolder, pathToSamtools, thre
 			else: traAnnot = traAnnot+" ["+strandA+"/"+strandB+"] ["+nNucleotidesFinal+"] ["+geneID+"] ["+str(vafAdj)+"%]"
 			translocationsPASS.append("\t".join(["Oncogenic "+("IG" if geneToAnalyze == "ig" else "TCR" if geneToAnalyze == "tcr" else "IG/TCR")+" rearrangement", traAnnot, flagAnnot, mechanism, str(score)+" ("+str(scoreNormal)+") ["+str(ponCount)+"] ["+repeatMasker+"]", "PASS", mapQualReport, str(numReads)]+["NA"]*6)+("" if reportReadNames == "no" else "\t"+readNamesReport))
 	
-	# 7. Return
+	# 10. Return
 	return(mergedTranslocationsALL, translocationsPASS)
 
 def getPurity(wkDir, seq, chrom, genomeVersion, inputsFolder, chrAnnot, filterOutputFile, geneToAnalyze, listGenes, estimatePurityCoverage, bamT, bamN, seqDepth, pathToSamtools, mapq, scoreCutoff, plotPurityCoverage, reportReadNames, errLogSamtools):
