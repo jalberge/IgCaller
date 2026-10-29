@@ -23,6 +23,13 @@ def check_empty_or_integer(value):
 		else:
 			sys.exit(str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))+" - IgCaller: error message... '"+value+"' should be an integer.")
 
+def run_bam_preparation(command, errLogSamtools):
+	try:
+		with open(errLogSamtools, "a") as log:
+			subprocess.run(["/bin/bash", "-o", "pipefail", "-c", command], stderr=log, check=True)
+	except subprocess.CalledProcessError as exc:
+		sys.exit(str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))+" - IgCaller: BAM preparation failed (exit code "+str(exc.returncode)+"). Check cloud access, the BAM index, and "+errLogSamtools+".")
+
 # Manage inputs
 parser  = argparse.ArgumentParser(prog='IgCaller', description='''IgCaller v2.0.0 (https://github.com/nadeulab/IgCaller)''')
 parser.add_argument('-v', '--version', action='version', version="%(prog)s v2.0.0")
@@ -595,18 +602,18 @@ errLogSamtools = wkDir+"/tmp/errLogSamtools.txt"
 ## Create mini IG-bam for tumor and normal (if available):
 print(str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))+" - IgCaller: creating mini BAM files...")
 bamT = wkDir+"/"+originalBamT.split("/")[-1]
-comms = pathToSamtools+"samtools view -h -P -F 1024 -b "+originalBamT+" "+coordsToSubset+" | "+pathToSamtools+"samtools sort -@ "+threadsForSamtools+" -o "+bamT+" 2>> "+errLogSamtools  # -F 1024 = read is PCR or optical duplicate
-subprocess.call(comms, shell=True)
+comms = pathToSamtools+"samtools view -h -P -F 1024 -b "+originalBamT+" "+coordsToSubset+" | "+pathToSamtools+"samtools sort -@ "+threadsForSamtools+" -o "+bamT  # -F 1024 = read is PCR or optical duplicate
+run_bam_preparation(comms, errLogSamtools)
 comms = pathToSamtools+"samtools index -@ "+threadsForSamtools+" "+bamT
-subprocess.call(comms, shell=True)
+run_bam_preparation(comms, errLogSamtools)
 bamN = None
 miniBamN = None
 if originalBamN is not None:
 	bamN = wkDir+"/"+originalBamN.split("/")[-1]
-	comms = pathToSamtools+"samtools view -h -P -F 1024 -b "+originalBamN+" "+coordsToSubset+" | "+pathToSamtools+"samtools sort -@ "+threadsForSamtools+" -o "+bamN+" 2>> "+errLogSamtools
-	subprocess.call(comms, shell=True)
+	comms = pathToSamtools+"samtools view -h -P -F 1024 -b "+originalBamN+" "+coordsToSubset+" | "+pathToSamtools+"samtools sort -@ "+threadsForSamtools+" -o "+bamN
+	run_bam_preparation(comms, errLogSamtools)
 	comms = pathToSamtools+"samtools index -@ "+threadsForSamtools+" "+bamN 
-	subprocess.call(comms, shell=True)
+	run_bam_preparation(comms, errLogSamtools)
 
 ## Main output file:
 filterOutputFile = wkDir+"/"+originalBamT.split("/")[-1].replace(".bam", "_output_filtered.tsv")
